@@ -1,0 +1,515 @@
+# HighwayEnv Multi-Modal Data Collection System - .gitignore
+
+# ============================================================================
+# Python
+# ============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+avs_venv/
+venv_watch_cars/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ============================================================================
+# IDEs and Editors
+# ============================================================================
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Atom
+.atom/
+
+# ============================================================================
+# Operating System
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# Project Specific - Data and Outputs
+# ============================================================================
+
+# Generated datasets and collected data
+data/
+!data/.gitkeep
+datasets/
+collected_data/
+simulation_data/
+
+# Specific data directories
+data/highway_multimodal_dataset/
+data/complete_workflow_demo/
+data/my_dataset/
+data/large_dataset/
+data/tutorial/
+data/simulations/
+data/simple_simulations/
+data/car_watching/
+data/plots/
+
+# Log files
+logs/
+*.log
+log_*.txt
+collection_*.log
+
+# Temporary files
+tmp/
+temp/
+temporary/
+
+# Cache directories
+.cache/
+cache/
+
+# ============================================================================
+# Machine Learning and AI
+# ============================================================================
+
+# Model files
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.pb
+*.pth
+*.pt
+*.ckpt
+*.model
+*.weights
+models/
+checkpoints/
+saved_models/
+
+# TensorBoard logs
+runs/
+tensorboard_logs/
+tb_logs/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Weights & Biases
+wandb/
+
+# ============================================================================
+# Data Files
+# ============================================================================
+
+# Large data files
+*.parquet
+*.csv
+*.npy
+*.npz
+*.mat
+*.hdf
+*.h5
+
+# JSON data files (but keep configs)
+data/**/*.json
+logs/**/*.json
+simulation_data/**/*.json
+collected_data/**/*.json
+
+# Exception: Keep small example/config files
+!**/config*.json
+!**/example*.json
+!**/sample*.json
+!**/test*.json
+!requirements*.txt
+
+# Compressed files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ============================================================================
+# Media Files
+# ============================================================================
+
+# Images
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.ico
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+
+# Exception: Keep documentation images
+!docs/**/*.png
+!docs/**/*.jpg
+!docs/**/*.gif
+!README*.png
+!README*.jpg
+
+# ============================================================================
+# Highway-env and Simulation Specific
+# ============================================================================
+
+# Pygame recordings
+*.avi
+recordings/
+videos/
+
+# Simulation outputs
+simulation_results/
+episode_data/
+trajectory_data/
+
+# Performance profiling
+*.prof
+*.profile
+profiling_results/
+
+# ============================================================================
+# Development and Testing
+# ============================================================================
+
+# Test outputs
+test_results/
+test_data/
+.coverage*
+htmlcov/
+
+# Benchmarking
+benchmark_results/
+performance_logs/
+
+# Documentation builds
+docs/build/
+docs/_build/
+site/
+
+# ============================================================================
+# Configuration and Secrets
+# ============================================================================
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Configuration files with secrets
+config_local.py
+settings_local.py
+secrets.json
+credentials.json
+
+# API keys
+*.key
+*.pem
+*.crt
+
+# ============================================================================
+# Backup and Temporary Files
+# ============================================================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Auto-generated files
+auto_generated/
+generated/
+
+# ============================================================================
+# Package Managers and Dependencies
+# ============================================================================
+
+# npm (if using any JS tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Conda
+.conda/
+
+# ============================================================================
+# Jupyter and Notebooks
+# ============================================================================
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Jupyter Lab
+.jupyter/
+
+# Notebook outputs (keep notebooks but ignore outputs)
+# Uncomment the next line if you want to ignore all notebooks
+# *.ipynb
+!**/example*.ipynb
+!**/tutorial*.ipynb
+
+# ============================================================================
+# Custom Project Files
+# ============================================================================
+
+# Run scripts (generated by setup)
+run_watch_cars.sh
+run_watch_cars.bat
+
+# User-specific configuration
+user_config.py
+local_settings.py
+
+# Experiment tracking
+experiments/
+experiment_logs/
+
+# Custom data analysis
+analysis_results/
+plots/
+figures/
+
+# ============================================================================
+# Keep These Files (Exceptions)
+# ============================================================================
+
+# Keep important documentation and examples
+!README*.md
+!SETUP*.md
+!LICENSE*
+!requirements*.txt
+!setup.py
+!pyproject.toml
+!Makefile
+
+# Keep example configurations
+!examples/
+!docs/
+!tests/
+
+# Keep small sample data files
+!**/sample_*.json
+!**/example_*.json
+!**/test_*.json

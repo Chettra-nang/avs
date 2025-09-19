@@ -1,0 +1,6 @@
+Collecting psutil
+  Downloading psutil-7.1.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (23 kB)
+Downloading psutil-7.1.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (291 kB)
+   ━━━━━━━━━━━━━━━ 291.2/291.2 kB 1.5 MB/s eta 0:00:00
+Installing collected packages: psutil
+Successfully installed psutil-7.1.0
