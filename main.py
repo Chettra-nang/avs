@@ -489,23 +489,24 @@ def demonstrate_data_loading():
         
         print(f"✓ Dataset index loaded successfully")
         print(f"  - Total scenarios: {len(index_data['scenarios'])}")
-        print(f"  - Creation time: {index_data['created_at']}")
-        print(f"  - Total files: {index_data['total_files']}")
+        print(f"  - Creation time: {index_data.get('created', 'Unknown')}")
+        print(f"  - Total files: {index_data.get('total_files', 0)}")
         
         # Show available scenarios
         print("\nAvailable scenarios:")
-        for scenario_name, scenario_info in index_data['scenarios'].items():
-            print(f"  - {scenario_name}: {len(scenario_info['files'])} files")
+        for scenario_name, scenario_files in index_data['scenarios'].items():
+            print(f"  - {scenario_name}: {len(scenario_files)} files")
         
         # Load example data from first available scenario
         if index_data['scenarios']:
             scenario_name = list(index_data['scenarios'].keys())[0]
-            scenario_files = index_data['scenarios'][scenario_name]['files']
+            scenario_files = index_data['scenarios'][scenario_name]
             
             if scenario_files:
                 # Load first parquet file
-                first_file = scenario_files[0]
-                parquet_path = storage_path / scenario_name / first_file
+                first_file_info = scenario_files[0]
+                parquet_file = first_file_info['transitions_file']
+                parquet_path = storage_path / parquet_file
                 
                 print(f"\nLoading example data from: {parquet_path}")
                 

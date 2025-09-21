@@ -246,6 +246,8 @@ data/simple_simulations/
 data/car_watching/
 data/plots/
 
+avs_watch_venv
+
 # Log files
 logs/
 *.log
