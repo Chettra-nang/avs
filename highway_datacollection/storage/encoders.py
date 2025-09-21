@@ -78,6 +78,28 @@ class BinaryArrayEncoder:
         
         return array
     
+    def encode_single(self, array: np.ndarray, prefix: str = "") -> Dict[str, Any]:
+        """
+        Encode a single array with optional prefix.
+        
+        Args:
+            array: Numpy array to encode
+            prefix: Optional prefix for the keys
+            
+        Returns:
+            Dictionary with blob, shape, and dtype information
+        """
+        encoded = self.encode(array)
+        
+        if prefix:
+            return {
+                f"{prefix}_blob": encoded['blob'],
+                f"{prefix}_shape": encoded['shape'],
+                f"{prefix}_dtype": encoded['dtype']
+            }
+        else:
+            return encoded
+    
     def encode_multiple(self, arrays: Dict[str, np.ndarray]) -> Dict[str, Any]:
         """
         Encode multiple arrays with prefixed keys.

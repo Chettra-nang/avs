@@ -170,6 +170,10 @@ class HighwaySimulationViewer:
         self.start_time = None
         self.last_stats_update = 0
         
+        # Initialize agent tracking
+        self.requested_agents = self.scenario_config['controlled_vehicles']
+        self.actual_controlled = 1  # Default, will be updated in create_environment
+        
         # Display settings
         self.font = None
         self.clock = None
@@ -314,8 +318,15 @@ class HighwaySimulationViewer:
             for i in range(min(len(actions), observations.shape[0])):
                 if i < observations.shape[0]:
                     ego = observations[i] if len(observations.shape) > 2 else observations
-                    speed = np.sqrt(ego[3]**2 + ego[4]**2) if ego[0] > 0 else 0
-                    speeds.append(speed)
+                    try:
+                        # Check if vehicle is present (first element > 0.5 typically indicates presence)
+                        if len(ego) > 4 and float(ego[0]) > 0.5:
+                            speed = float(np.sqrt(ego[3]**2 + ego[4]**2))
+                        else:
+                            speed = 0.0
+                        speeds.append(speed)
+                    except (IndexError, ValueError):
+                        speeds.append(0.0)
             
             if speeds:
                 current_avg_speed = np.mean(speeds)
