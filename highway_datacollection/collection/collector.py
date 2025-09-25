@@ -351,17 +351,34 @@ class SynchronizedCollector:
         
         # Check that all environments have same reward, terminated, truncated
         for obs_type, result in step_results.items():
-            if result['reward'] != ref_reward:
+            # Handle array comparisons for rewards too
+            if isinstance(result['reward'], np.ndarray) and isinstance(ref_reward, np.ndarray):
+                if not np.array_equal(result['reward'], ref_reward):
+                    logger.warning(f"Reward mismatch: {obs_type} has {result['reward']}, "
+                                 f"expected {ref_reward}")
+                    return False
+            elif result['reward'] != ref_reward:
                 logger.warning(f"Reward mismatch: {obs_type} has {result['reward']}, "
                              f"expected {ref_reward}")
                 return False
             
-            if result['terminated'] != ref_terminated:
+            # Handle array comparisons for multi-agent environments
+            if isinstance(result['terminated'], np.ndarray) and isinstance(ref_terminated, np.ndarray):
+                if not np.array_equal(result['terminated'], ref_terminated):
+                    logger.warning(f"Terminated mismatch: {obs_type} has {result['terminated']}, "
+                                 f"expected {ref_terminated}")
+                    return False
+            elif result['terminated'] != ref_terminated:
                 logger.warning(f"Terminated mismatch: {obs_type} has {result['terminated']}, "
                              f"expected {ref_terminated}")
                 return False
             
-            if result['truncated'] != ref_truncated:
+            if isinstance(result['truncated'], np.ndarray) and isinstance(ref_truncated, np.ndarray):
+                if not np.array_equal(result['truncated'], ref_truncated):
+                    logger.warning(f"Truncated mismatch: {obs_type} has {result['truncated']}, "
+                                 f"expected {ref_truncated}")
+                    return False
+            elif result['truncated'] != ref_truncated:
                 logger.warning(f"Truncated mismatch: {obs_type} has {result['truncated']}, "
                              f"expected {ref_truncated}")
                 return False
@@ -651,12 +668,20 @@ class SynchronizedCollector:
             truncated = first_result['truncated']
             info = first_result['info']
             
+            # Handle arrays for multi-agent environments
+            if isinstance(terminated, np.ndarray):
+                terminated_any = terminated.any()
+                truncated_any = truncated.any()
+            else:
+                terminated_any = terminated
+                truncated_any = truncated
+            
             episode_rewards.append(reward)
-            episode_dones.append(terminated or truncated)
+            episode_dones.append(terminated_any or truncated_any)
             episode_infos.append(info)
             
             # Check termination
-            done = terminated or truncated
+            done = terminated_any or truncated_any
             step += 1
             self.collection_stats["steps_collected"] += 1
         
@@ -723,7 +748,7 @@ class SynchronizedCollector:
                 # Extract agent-specific observation
                 if isinstance(observations, (list, tuple)) and len(observations) > agent_idx:
                     agent_obs = observations[agent_idx]
-                elif observations:
+                elif observations is not None and (not isinstance(observations, np.ndarray) or observations.size > 0):
                     agent_obs = observations
                 else:
                     agent_obs = self._get_default_observation(modality)

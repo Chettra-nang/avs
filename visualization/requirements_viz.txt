@@ -1,0 +1,15 @@
+# Requirements for Image Stack Visualizer
+# Core data science libraries
+pandas>=1.5.0
+numpy>=1.21.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# For Parquet file support
+pyarrow>=10.0.0
+
+# Optional: for GIF creation
+Pillow>=9.0.0
+
+# Optional: for interactive widgets (if using in Jupyter)
+ipywidgets>=7.6.0
