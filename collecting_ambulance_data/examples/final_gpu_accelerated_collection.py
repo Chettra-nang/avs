@@ -81,7 +81,8 @@ class FinalGPUAmbulanceCollector:
                                           episodes_per_scenario: int = 10,
                                           max_steps_per_episode: int = 50,
                                           base_seed: int = 42,
-                                          gpu_intensity: int = 10) -> Dict[str, Any]:
+                                          gpu_intensity: int = 10,
+                                          batch_size: int = 5) -> Dict[str, Any]:
         """
         Collect data with FINAL GPU acceleration that actually uses RTX 3050.
         
@@ -89,8 +90,9 @@ class FinalGPUAmbulanceCollector:
             scenarios: List of scenario names
             episodes_per_scenario: Episodes per scenario
             max_steps_per_episode: Max steps per episode
-            base_seed: Random seed
+            base_seed: Random seed for reproducibility
             gpu_intensity: Seconds of GPU processing per scenario
+            batch_size: Batch size for episode processing
         """
         logger.info(f"🚀 FINAL GPU collection for {len(scenarios)} scenarios")
         logger.info(f"🎯 GPU intensity: {gpu_intensity}s per scenario")
@@ -104,10 +106,10 @@ class FinalGPUAmbulanceCollector:
             scenario_start_time = time.time()
             
             try:
-                # Regular data collection (CPU) with reduced batch size for large collections
+                # Regular data collection (CPU) with batch size parameter
                 scenario_seed = base_seed + scenario_idx * 10000
-                # Reduce batch size for large episode counts to prevent memory issues
-                safe_batch_size = min(5, max(1, episodes_per_scenario // 100)) if episodes_per_scenario > 100 else 5
+                # Use provided batch size, but reduce for very large episode counts to prevent memory issues
+                safe_batch_size = min(batch_size, max(1, episodes_per_scenario // 100)) if episodes_per_scenario > 1000 else batch_size
                 result = self.collector.collect_single_ambulance_scenario(
                     scenario_name=scenario_name,
                     episodes=episodes_per_scenario,
@@ -324,6 +326,8 @@ def main():
     parser.add_argument('--max-steps', type=int, default=30, help='Max steps per episode')
     parser.add_argument('--output-dir', type=str, default='data/ambulance_final_gpu')
     parser.add_argument('--gpu-intensity', type=int, default=15, help='GPU processing seconds per scenario')
+    parser.add_argument('--seed', type=int, default=42, help='Base random seed for reproducibility')
+    parser.add_argument('--batch-size', type=int, default=5, help='Batch size for episode processing')
     parser.add_argument('--no-gpu', action='store_true', help='Disable GPU')
     
     args = parser.parse_args()
@@ -365,7 +369,9 @@ def main():
                 scenarios=scenarios_to_collect,
                 episodes_per_scenario=args.episodes,
                 max_steps_per_episode=args.max_steps,
-                gpu_intensity=args.gpu_intensity
+                base_seed=args.seed,
+                gpu_intensity=args.gpu_intensity,
+                batch_size=args.batch_size
             )
             
             collection_time = time.time() - start_time
