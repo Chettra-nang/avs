@@ -6,6 +6,11 @@ pandas>=2.0.0
 pyarrow>=12.0.0
 stable-baselines3>=2.0.0
 
+# GPU Processing Dependencies (CRITICAL for RTX 5090)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
 # Additional dependencies for data processing and storage
 scipy>=1.10.0
 matplotlib>=3.7.0

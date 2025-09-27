@@ -400,7 +400,14 @@ Use the provided scripts for easy data collection:
 # Activate the environment first (as required)
 source avs_venv/bin/activate
 
-# Collect from all 15 ambulance scenarios
+# Collect from all 15 ambulance scenarios (GPU-accelerated)
+python collecting_ambulance_data/examples/final_gpu_accelerated_collection.py \
+    --episodes 50 \
+    --max-steps 100 \
+    --gpu-intensity 20 \
+    --output-dir data/ambulance_dataset
+
+# Collect from all 15 ambulance scenarios (standard)
 python collecting_ambulance_data/examples/basic_ambulance_collection.py \
     --episodes 50 \
     --max-steps 100 \

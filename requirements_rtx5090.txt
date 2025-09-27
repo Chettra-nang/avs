@@ -1,0 +1,43 @@
+# Requirements for RTX 5090 GPU-Accelerated Ambulance Data Collection
+# 
+# Installation Instructions:
+# 1. Create virtual environment: python -m venv avs_venv_5090
+# 2. Activate: avs_venv_5090\Scripts\activate (Windows) or source avs_venv_5090/bin/activate (Linux)
+# 3. Install PyTorch with CUDA first: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# 4. Install remaining requirements: pip install -r requirements_rtx5090.txt
+
+# Core dependencies for HighwayEnv Multi-Modal Data Collection
+highway-env>=1.8.0
+gymnasium>=0.29.0
+numpy>=1.24.0
+pandas>=2.0.0
+pyarrow>=12.0.0
+stable-baselines3>=2.0.0
+
+# NOTE: PyTorch with CUDA support must be installed separately:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# 
+# For RTX 5090, you may need CUDA 12.2+ when available:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu122
+
+# Additional dependencies for data processing and storage
+scipy>=1.10.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+psutil>=5.9.0
+
+# GPU Memory Management (important for 32GB VRAM!)
+nvidia-ml-py3>=7.352.0
+
+# Enhanced visualization for large datasets
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# Development and testing dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Performance monitoring for RTX 5090
+gpustat>=1.1.0
