@@ -272,9 +272,12 @@ class SynchronizedCollector:
         logger.debug(f"Stepping parallel environments with actions: {actions}")
         step_results = {}
         
+        # Robust action validation and conversion
+        validated_actions = self._validate_and_convert_actions(actions)
+        
         try:
             for obs_type, env in self._environments.items():
-                obs, reward, terminated, truncated, info = env.step(actions)
+                obs, reward, terminated, truncated, info = env.step(validated_actions)
                 step_results[obs_type] = {
                     'observation': obs,
                     'reward': reward,
@@ -288,6 +291,11 @@ class SynchronizedCollector:
             
         except Exception as e:
             logger.error(f"Failed to step environments: {e}")
+            # Try fallback action formats
+            fallback_result = self._try_fallback_step(actions)
+            if fallback_result is not None:
+                logger.warning("Used fallback action format")
+                return fallback_result
             raise RuntimeError(f"Environment step failed: {e}")
     
     def verify_synchronization(self, step_results: Dict[str, Any]) -> bool:
@@ -854,6 +862,77 @@ class SynchronizedCollector:
         
         logger.info("Performance metrics reset")
     
+    def _validate_and_convert_actions(self, actions: Tuple[int, ...]) -> Tuple[int, ...]:
+        """
+        Validate and convert actions to ensure they are proper Python integers.
+        
+        Args:
+            actions: Input actions tuple
+            
+        Returns:
+            Validated actions tuple with Python integers
+        """
+        try:
+            # Convert all actions to Python integers
+            validated_actions = tuple(int(action) for action in actions)
+            
+            # Additional validation
+            for i, action in enumerate(validated_actions):
+                if not isinstance(action, int) or isinstance(action, bool):
+                    logger.warning(f"Action {i} type issue: {type(action)}, converting...")
+                    validated_actions = tuple(
+                        int(a) if not (isinstance(a, int) and not isinstance(a, bool)) else a 
+                        for a in validated_actions
+                    )
+                    break
+            
+            return validated_actions
+            
+        except Exception as e:
+            logger.error(f"Action validation failed: {e}")
+            # Fallback to original actions
+            return actions
+    
+    def _try_fallback_step(self, actions: Tuple[int, ...]) -> Optional[Dict[str, Any]]:
+        """
+        Try alternative action formats as fallback.
+        
+        Args:
+            actions: Original actions
+            
+        Returns:
+            Step results if successful, None if all formats fail
+        """
+        fallback_formats = [
+            list(actions),  # Try as list
+            [int(a) for a in actions],  # Try as list of explicit ints
+            tuple(int(a) for a in actions),  # Try as tuple of explicit ints
+        ]
+        
+        for i, fallback_actions in enumerate(fallback_formats):
+            try:
+                logger.debug(f"Trying fallback format {i}: {type(fallback_actions)} {fallback_actions}")
+                step_results = {}
+                
+                for obs_type, env in self._environments.items():
+                    obs, reward, terminated, truncated, info = env.step(fallback_actions)
+                    step_results[obs_type] = {
+                        'observation': obs,
+                        'reward': reward,
+                        'terminated': terminated,
+                        'truncated': truncated,
+                        'info': info
+                    }
+                
+                logger.info(f"Fallback format {i} successful")
+                return step_results
+                
+            except Exception as e:
+                logger.debug(f"Fallback format {i} failed: {e}")
+                continue
+        
+        return None
+
     def __del__(self):
         """Cleanup when collector is destroyed."""
         if hasattr(self, 'memory_profiler') and self.memory_profiler:

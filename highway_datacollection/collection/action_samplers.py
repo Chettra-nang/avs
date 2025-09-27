@@ -98,7 +98,7 @@ class RandomActionSampler(ActionSampler):
             Tuple of random actions for each agent
         """
         actions = tuple(
-            self._rng.integers(0, self._action_space_size) 
+            int(self._rng.integers(0, self._action_space_size))  # Convert to Python int
             for _ in range(n_agents)
         )
         

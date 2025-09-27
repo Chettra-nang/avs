@@ -17,20 +17,69 @@ The framework addresses critical gaps in autonomous vehicle research by providin
 
 ---
 
+## Quick Start Guide
+
+### Standard Highway Data Collection
+
+```python
+from highway_datacollection.collection.orchestrator import run_full_collection
+
+# Collect multi-modal highway data
+run_full_collection(
+    scenarios=["free_flow", "dense_commuting"],
+    episodes_per_scenario=50,
+    n_agents=2,
+    output_dir="data/highway_dataset"
+)
+```
+
+### Emergency Vehicle Data Collection
+
+```python
+from collecting_ambulance_data.collection.ambulance_collector import AmbulanceDataCollector
+
+# Collect emergency vehicle data
+with AmbulanceDataCollector(n_agents=4) as collector:
+    results = collector.collect_ambulance_data(
+        scenarios=["highway_emergency_light", "highway_rush_hour"],
+        episodes_per_scenario=20,
+        max_steps_per_episode=100
+    )
+    
+    # Store emergency vehicle dataset
+    collector.store_ambulance_data(results, "data/emergency_dataset")
+```
+
+### Data Analysis and Visualization
+
+```python
+import pandas as pd
+from visualization.comprehensive_data_plotter import plot_multimodal_data
+
+# Load collected data
+df = pd.read_parquet("data/highway_dataset/free_flow/transitions.parquet")
+
+# Visualize multi-modal data
+plot_multimodal_data(df, scenario="free_flow", output_dir="plots/")
+```
+
+---
+
 ## Table of Contents
 
 1. [System Architecture and Design Philosophy](#1-system-architecture-and-design-philosophy)
 2. [Core Components Analysis](#2-core-components-analysis)
 3. [Multi-Modal Data Collection Framework](#3-multi-modal-data-collection-framework)
 4. [Scenario Management and Curriculum Design](#4-scenario-management-and-curriculum-design)
-5. [Feature Derivation and Processing Pipeline](#5-feature-derivation-and-processing-pipeline)
-6. [Data Storage and Management Architecture](#6-data-storage-and-management-architecture)
-7. [Performance Optimization and Scalability](#7-performance-optimization-and-scalability)
-8. [Research Applications and Use Cases](#8-research-applications-and-use-cases)
-9. [Implementation Details and Technical Specifications](#9-implementation-details-and-technical-specifications)
-10. [Evaluation and Validation Framework](#10-evaluation-and-validation-framework)
-11. [Future Research Directions](#11-future-research-directions)
-12. [Conclusions and Impact Assessment](#12-conclusions-and-impact-assessment)
+5. [Ambulance Data Collection System](#5-ambulance-data-collection-system)
+6. [Feature Derivation and Processing Pipeline](#6-feature-derivation-and-processing-pipeline)
+7. [Data Storage and Management Architecture](#7-data-storage-and-management-architecture)
+8. [Performance Optimization and Scalability](#8-performance-optimization-and-scalability)
+9. [Research Applications and Use Cases](#9-research-applications-and-use-cases)
+10. [Implementation Details and Technical Specifications](#10-implementation-details-and-technical-specifications)
+11. [Evaluation and Validation Framework](#11-evaluation-and-validation-framework)
+12. [Future Research Directions](#12-future-research-directions)
+13. [Conclusions and Impact Assessment](#13-conclusions-and-impact-assessment)
 
 ---
 
@@ -335,13 +384,193 @@ Each scenario incorporates specific behavioral patterns:
 
 ---
 
-## 5. Feature Derivation and Processing Pipeline
+## 5. Ambulance Data Collection System
 
-### 5.1 FeatureDerivationEngine Architecture
+### 5.1 Emergency Vehicle Research Extension
+
+The ambulance data collection system extends the core highway data collection infrastructure to support emergency vehicle scenarios. This specialized system maintains full compatibility with all existing multi-modal data collection capabilities while introducing ambulance-specific vehicle configurations and 15 diverse emergency scenarios.
+
+#### 5.1.1 System Overview
+
+The ambulance system provides:
+- **Emergency Vehicle Ego Agent**: First controlled agent configured with emergency response characteristics
+- **Multi-Agent Emergency Scenarios**: 3-4 controlled agents with ambulance + normal vehicles
+- **15 Specialized Scenarios**: Comprehensive emergency response situations
+- **Full Multi-Modal Support**: All observation types (Kinematics, OccupancyGrid, GrayscaleObservation)
+- **Seamless Integration**: Compatible with existing visualization and analysis tools
+
+#### 5.1.2 Architecture Integration
+
+```
+collecting_ambulance_data/
+├── scenarios/           # 15 emergency vehicle scenarios
+├── collection/          # AmbulanceDataCollector implementation
+├── examples/           # Demonstration and usage scripts
+└── README.md          # Comprehensive ambulance documentation
+```
+
+### 5.2 Emergency Scenario Taxonomy
+
+#### 5.2.1 Traffic Density Scenarios
+
+**Light Traffic Emergency Response:**
+- `highway_emergency_light`: Basic emergency response with minimal traffic
+- `highway_weather_conditions`: Emergency response under adverse weather
+
+**Moderate Traffic Emergency Response:**
+- `highway_emergency_moderate`: Standard emergency navigation
+- `highway_lane_closure`: Emergency response through construction zones
+- `highway_accident_scene`: Ambulance approaching accident locations
+
+**Heavy Traffic Emergency Response:**
+- `highway_emergency_dense`: Emergency navigation in heavy congestion
+- `highway_rush_hour`: Peak traffic emergency response
+- `highway_stop_and_go`: Emergency response in stop-and-go conditions
+
+#### 5.2.2 Specialized Emergency Scenarios
+
+**Infrastructure Challenges:**
+- `highway_construction`: Navigation through construction zones
+- `highway_merge_heavy`: Emergency response in heavy merge areas
+- `highway_shoulder_use`: Utilizing highway shoulders for emergency access
+
+**Traffic Behavior Challenges:**
+- `highway_aggressive_drivers`: Emergency response with aggressive traffic
+- `highway_truck_heavy`: Navigation around heavy truck traffic
+- `highway_speed_variation`: Adapting to varying speed zones
+
+**Time-Critical Scenarios:**
+- `highway_time_pressure`: High-urgency emergency response situations
+
+### 5.3 Multi-Modal Emergency Data Collection
+
+#### 5.3.1 Observation Modalities for Emergency Vehicles
+
+**Kinematics Observations:**
+- Emergency vehicle position and velocity tracking
+- Multi-agent coordination in emergency scenarios
+- Traffic flow analysis during emergency response
+- Safety metric calculation (TTC, gap analysis) for emergency situations
+
+**OccupancyGrid Observations:**
+- Spatial traffic representation around emergency vehicles
+- Path planning for emergency navigation
+- Obstacle detection and avoidance in emergency contexts
+- Free space identification for emergency maneuvers
+
+**GrayscaleObservation:**
+- Visual emergency vehicle identification and tracking
+- Emergency lighting and signaling analysis
+- Traffic behavior observation during emergency response
+- Computer vision training for emergency vehicle detection
+
+#### 5.3.2 Emergency Vehicle Configuration
+
+```python
+# Ambulance-specific configuration
+ambulance_config = {
+    "controlled_vehicles": 4,           # 4 controlled agents total
+    "_ambulance_config": {
+        "ambulance_agent_index": 0,     # First agent is emergency vehicle
+        "emergency_priority": "high",    # Emergency response priority
+        "ambulance_behavior": "emergency_response"
+    },
+    "lanes_count": 4,                   # 4-lane highway configuration
+    "screen_width": 800,                # Horizontal image orientation
+    "screen_height": 600,               # Optimized for emergency scenarios
+}
+```
+
+### 5.4 Emergency Data Collection Workflow
+
+#### 5.4.1 Basic Emergency Data Collection
+
+```python
+from collecting_ambulance_data.collection.ambulance_collector import AmbulanceDataCollector
+
+# Initialize emergency vehicle data collector
+with AmbulanceDataCollector(n_agents=4) as collector:
+    
+    # Collect emergency scenario data
+    emergency_scenarios = [
+        "highway_emergency_light",
+        "highway_rush_hour", 
+        "highway_accident_scene"
+    ]
+    
+    results = collector.collect_ambulance_data(
+        scenarios=emergency_scenarios,
+        episodes_per_scenario=20,
+        max_steps_per_episode=100
+    )
+    
+    # Store emergency vehicle data
+    storage_info = collector.store_ambulance_data(
+        results, 
+        Path("data/emergency_vehicle_dataset")
+    )
+```
+
+#### 5.4.2 Emergency Scenario Validation
+
+```python
+# Validate emergency vehicle setup
+validation = collector.validate_ambulance_setup("highway_emergency_dense")
+print(f"Emergency setup valid: {validation['valid']}")
+
+# Get emergency scenario information
+info = collector.get_scenario_info("highway_accident_scene")
+print(f"Emergency type: {info['highway_conditions']}")
+print(f"Priority level: {info['_ambulance_config']['emergency_priority']}")
+```
+
+### 5.5 Integration with Existing Infrastructure
+
+#### 5.5.1 Environment Factory Extension
+
+The `MultiAgentEnvFactory` has been extended to support emergency vehicle configurations:
+
+```python
+def create_ambulance_env(scenario_name: str, obs_type: str, n_agents: int) -> gym.Env:
+    """Create environment with ambulance ego vehicle configuration."""
+    # Configure first agent as emergency vehicle
+    # Maintain multi-modal observation support
+    # Ensure compatibility with existing data collection pipeline
+```
+
+#### 5.5.2 Scenario Registry Integration
+
+Emergency scenarios are integrated into the existing scenario registry system:
+- Validation for ambulance-specific parameters
+- Compatibility with existing configuration patterns
+- Support for dynamic observation type selection
+- Integration with current storage and analysis tools
+
+### 5.6 Emergency Vehicle Research Applications
+
+#### 5.6.1 Emergency Response Optimization
+
+- **Route Planning**: Optimal path selection during emergency response
+- **Traffic Interaction**: Understanding how traffic responds to emergency vehicles
+- **Multi-Agent Coordination**: Coordination between emergency and civilian vehicles
+- **Safety Analysis**: Risk assessment during emergency navigation
+
+#### 5.6.2 Policy Learning for Emergency Scenarios
+
+- **Emergency Vehicle Policies**: Learning optimal emergency response behaviors
+- **Traffic Yielding Policies**: Training civilian vehicles to yield appropriately
+- **Multi-Modal Emergency Perception**: Visual and sensor-based emergency vehicle detection
+- **Curriculum Learning**: Progressive training from simple to complex emergency scenarios
+
+---
+
+## 6. Feature Derivation and Processing Pipeline
+
+### 6.1 FeatureDerivationEngine Architecture
 
 The feature derivation engine processes raw observations into meaningful metrics for research and training:
 
-#### 5.1.1 Core Feature Extractors
+#### 6.1.1 Core Feature Extractors
 
 **KinematicsExtractor:**
 - Time-to-Collision (TTC) calculation
@@ -355,7 +584,7 @@ The feature derivation engine processes raw observations into meaningful metrics
 - Congestion level assessment
 - Gap analysis and availability
 
-#### 5.1.2 Advanced Feature Processing
+#### 6.1.2 Advanced Feature Processing
 
 ```python
 def generate_language_summary(self, ego: np.ndarray, others: np.ndarray, 
@@ -369,11 +598,11 @@ def generate_language_summary(self, ego: np.ndarray, others: np.ndarray,
 - Behavioral pattern identification
 - Decision rationale explanation
 
-### 5.2 Custom Feature Extension Framework
+### 6.2 Custom Feature Extension Framework
 
 The system supports custom feature extractors for specialized research:
 
-#### 5.2.1 Extension Interface
+#### 6.2.1 Extension Interface
 
 ```python
 class CustomFeatureExtractor:
@@ -383,7 +612,7 @@ class CustomFeatureExtractor:
         # Return dictionary of derived metrics
 ```
 
-#### 5.2.2 Example Custom Features
+#### 6.2.2 Example Custom Features
 
 - **Lateral Acceleration**: Vehicle stability metrics
 - **Relative Speed to Traffic**: Flow conformity analysis
@@ -392,13 +621,13 @@ class CustomFeatureExtractor:
 
 ---
 
-## 6. Data Storage and Management Architecture
+## 7. Data Storage and Management Architecture
 
-### 6.1 DatasetStorageManager: Scalable Data Persistence
+### 7.1 DatasetStorageManager: Scalable Data Persistence
 
 The storage manager implements efficient data persistence with support for large-scale datasets:
 
-#### 6.1.1 Storage Format Strategy
+#### 7.1.1 Storage Format Strategy
 
 **Primary Format: Apache Parquet (.parquet files)**
 The system uses Apache Parquet as the primary storage format for all transition data:
@@ -429,7 +658,7 @@ scenario_name/
 - One JSON object per line for streaming processing
 - Easy parsing and processing with standard tools
 
-#### 6.1.2 Binary Array Encoding
+#### 7.1.2 Binary Array Encoding
 
 Large arrays (occupancy grids, images) use specialized encoding:
 
@@ -449,9 +678,9 @@ class BinaryArrayEncoder:
 - Fast reconstruction
 - Metadata preservation
 
-### 6.2 Parquet-Based Data Organization
+### 7.2 Parquet-Based Data Organization
 
-#### 6.2.1 Parquet File Structure and Benefits
+#### 7.2.1 Parquet File Structure and Benefits
 
 The system's use of Apache Parquet format provides significant advantages for autonomous vehicle research:
 
@@ -467,7 +696,7 @@ The system's use of Apache Parquet format provides significant advantages for au
 - **Predicate Pushdown**: Filters data at the storage level for faster queries
 - **Column Statistics**: Built-in min/max/null statistics for each column
 
-#### 6.2.2 Hierarchical Dataset Organization
+#### 7.2.2 Hierarchical Dataset Organization
 
 ```
 dataset_root/
@@ -486,7 +715,7 @@ dataset_root/
     └── ep_20250921_010_meta.jsonl
 ```
 
-#### 6.2.3 Parquet Schema Design
+#### 7.2.3 Parquet Schema Design
 
 **Transition Data Schema (.parquet files):**
 ```python
@@ -523,7 +752,7 @@ gray_dtype: string
 summary_text: string           # Human-readable driving context description
 ```
 
-#### 6.2.2 Data Integrity and Validation
+#### 7.2.4 Data Integrity and Validation
 
 **Integrity Checks:**
 - File existence validation
@@ -539,11 +768,11 @@ summary_text: string           # Human-readable driving context description
 
 ---
 
-## 7. Performance Optimization and Scalability
+## 8. Performance Optimization and Scalability
 
-### 7.1 Memory Management Framework
+### 8.1 Memory Management Framework
 
-#### 7.1.1 Memory Profiling and Monitoring
+#### 8.1.1 Memory Profiling and Monitoring
 
 The system includes comprehensive memory management:
 
@@ -562,7 +791,7 @@ class MemoryProfiler:
 - Memory leak identification
 - Automatic garbage collection triggering
 
-#### 7.1.2 Batch Processing Optimization
+#### 8.1.2 Batch Processing Optimization
 
 **Adaptive Batch Sizing:**
 - Dynamic batch size adjustment based on available memory
@@ -574,9 +803,9 @@ class MemoryProfiler:
 - Lazy loading of large datasets
 - Efficient memory cleanup between batches
 
-### 7.2 Performance Profiling Integration
+### 8.2 Performance Profiling Integration
 
-#### 7.2.1 Throughput Monitoring
+#### 8.2.1 Throughput Monitoring
 
 ```python
 class StorageThroughputMonitor:
@@ -593,7 +822,7 @@ class StorageThroughputMonitor:
 - Memory usage patterns
 - CPU utilization tracking
 
-#### 7.2.2 Optimization Recommendations
+#### 8.2.2 Optimization Recommendations
 
 The system provides automated optimization suggestions:
 - Batch size adjustments
@@ -601,9 +830,9 @@ The system provides automated optimization suggestions:
 - Storage format optimizations
 - Parallel processing configurations
 
-### 6.3 Parquet Format Advantages for Autonomous Vehicle Research
+### 7.3 Parquet Format Advantages for Autonomous Vehicle Research
 
-#### 6.3.1 Performance Characteristics
+#### 7.3.1 Performance Characteristics
 
 **Data Loading Performance:**
 ```python
@@ -630,7 +859,7 @@ csv_time = time.time() - start      # ~2.5 seconds for 100MB
 - **Null Value Optimization**: Efficient handling of missing data
 - **Dictionary Encoding**: Automatic optimization for categorical data
 
-#### 6.3.2 Research Workflow Integration
+#### 7.3.2 Research Workflow Integration
 
 **Direct Analysis Capabilities:**
 ```python
@@ -655,7 +884,7 @@ for chunk in pd.read_parquet('large_dataset.parquet', chunksize=10000):
 - **SQL Engines**: Direct querying with DuckDB, Apache Drill
 - **Machine Learning**: Direct integration with scikit-learn, TensorFlow, PyTorch
 
-#### 6.3.3 Data Science Workflow Benefits
+#### 7.3.3 Data Science Workflow Benefits
 
 **Exploratory Data Analysis:**
 ```python
@@ -677,11 +906,11 @@ df.memory_usage(deep=True)  # Optimized memory footprint
 
 ---
 
-## 8. Research Applications and Use Cases
+## 9. Research Applications and Use Cases
 
-### 8.1 Reinforcement Learning Applications
+### 9.1 Reinforcement Learning Applications
 
-#### 8.1.1 Multi-Agent RL Training
+#### 9.1.1 Multi-Agent RL Training
 
 The collected data supports various RL research directions:
 
@@ -700,39 +929,39 @@ The collected data supports various RL research directions:
 - Communication protocol development
 - Team-based objective optimization
 
-#### 8.1.2 Curriculum Learning Integration
+#### 9.1.2 Curriculum Learning Integration
 
 The scenario progression supports curriculum learning research:
 - Progressive difficulty increase
 - Transfer learning between scenarios
 - Skill composition and hierarchical learning
 
-### 8.2 Computer Vision and Perception Research
+### 9.2 Computer Vision and Perception Research
 
-#### 8.2.1 Multi-Modal Fusion
+#### 9.2.1 Multi-Modal Fusion
 
 The synchronized multi-modal data enables fusion research:
 - Vision-sensor integration
 - Cross-modal learning
 - Robust perception under varying conditions
 
-#### 8.2.2 End-to-End Learning
+#### 9.2.2 End-to-End Learning
 
 Complete observation-to-action learning:
 - Direct policy learning from visual inputs
 - Attention mechanism development
 - Interpretable decision making
 
-### 8.3 Safety and Validation Research
+### 9.3 Safety and Validation Research
 
-#### 8.3.1 Safety Metric Development
+#### 9.3.1 Safety Metric Development
 
 The rich feature set supports safety research:
 - Time-to-Collision analysis
 - Risk assessment metrics
 - Safety-critical scenario identification
 
-#### 8.3.2 Validation and Verification
+#### 9.3.2 Validation and Verification
 
 Systematic testing and validation:
 - Edge case identification
@@ -741,11 +970,11 @@ Systematic testing and validation:
 
 ---
 
-## 9. Implementation Details and Technical Specifications
+## 10. Implementation Details and Technical Specifications
 
-### 9.1 System Requirements and Dependencies
+### 10.1 System Requirements and Dependencies
 
-#### 9.1.1 Core Dependencies
+#### 10.1.1 Core Dependencies
 
 **Primary Libraries:**
 - `gymnasium >= 0.29.0`: Environment interface
@@ -759,7 +988,7 @@ Systematic testing and validation:
 - `torch >= 1.13.0`: Deep learning framework
 - `matplotlib >= 3.6.0`: Visualization and plotting
 
-#### 9.1.2 Hardware Requirements
+#### 10.1.2 Hardware Requirements
 
 **Minimum Configuration:**
 - CPU: 4 cores, 2.5 GHz
@@ -773,9 +1002,9 @@ Systematic testing and validation:
 - Storage: 100+ GB SSD
 - GPU: NVIDIA GPU with 8+ GB VRAM
 
-### 9.2 Configuration Management
+### 10.2 Configuration Management
 
-#### 9.2.1 Global Configuration
+#### 10.2.1 Global Configuration
 
 ```python
 # config.py
@@ -799,7 +1028,7 @@ DEFAULT_CONFIG = {
 }
 ```
 
-#### 9.2.2 Runtime Configuration
+#### 10.2.2 Runtime Configuration
 
 Dynamic configuration adjustment during execution:
 - Memory limit adaptation
@@ -807,9 +1036,9 @@ Dynamic configuration adjustment during execution:
 - Performance threshold adjustment
 - Error recovery parameter tuning
 
-### 9.3 Error Handling and Recovery
+### 10.3 Error Handling and Recovery
 
-#### 9.3.1 Error Classification
+#### 10.3.1 Error Classification
 
 **Recoverable Errors:**
 - Memory allocation failures
@@ -823,7 +1052,7 @@ Dynamic configuration adjustment during execution:
 - Configuration corruption
 - Hardware failures
 
-#### 9.3.2 Recovery Strategies
+#### 10.3.2 Recovery Strategies
 
 ```python
 def _register_recovery_strategies(self) -> None:
@@ -841,11 +1070,11 @@ def _register_recovery_strategies(self) -> None:
 
 ---
 
-## 10. Evaluation and Validation Framework
+## 11. Evaluation and Validation Framework
 
-### 10.1 Data Quality Assurance
+### 11.1 Data Quality Assurance
 
-#### 10.1.1 Synchronization Validation
+#### 11.1.1 Synchronization Validation
 
 Comprehensive validation ensures data integrity across modalities:
 
@@ -864,7 +1093,7 @@ class SynchronizationValidator:
 - **Advanced**: Deep observation validation
 - **Critical**: Memory and performance validation
 
-#### 10.1.2 Data Completeness Assessment
+#### 11.1.2 Data Completeness Assessment
 
 **Completeness Metrics:**
 - Episode completion rates
@@ -872,9 +1101,9 @@ class SynchronizationValidator:
 - Modality availability assessment
 - Feature extraction success rates
 
-### 10.2 Performance Benchmarking
+### 11.2 Performance Benchmarking
 
-#### 10.2.1 Collection Performance Metrics
+#### 11.2.1 Collection Performance Metrics
 
 **Throughput Measurements:**
 - Episodes collected per minute
@@ -888,7 +1117,7 @@ class SynchronizationValidator:
 - Data integrity validation pass rate
 - Feature extraction accuracy
 
-#### 10.2.2 Scalability Testing
+#### 11.2.2 Scalability Testing
 
 **Load Testing:**
 - Maximum concurrent agents
@@ -904,7 +1133,7 @@ class SynchronizationValidator:
 
 ---
 
-## 11. Future Research Directions
+## 12. Future Research Directions
 
 ### 11.1 System Enhancement Opportunities
 
@@ -998,7 +1227,7 @@ class SynchronizationValidator:
 
 ---
 
-## 12. Conclusions and Impact Assessment
+## 13. Conclusions and Impact Assessment
 
 ### 12.1 Technical Contributions
 
