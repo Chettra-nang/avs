@@ -24,6 +24,29 @@ class MultiAgentEnvFactory:
         self._scenario_registry = ScenarioRegistry()
         self._supported_obs_types = list(OBSERVATION_CONFIGS.keys())
     
+    def _get_env_id_for_scenario(self, scenario_name: str) -> str:
+        """
+        Determine the appropriate highway-env environment ID based on scenario name.
+        
+        Args:
+            scenario_name: Name of the scenario
+            
+        Returns:
+            Environment ID string (e.g., 'highway-v0', 'roundabout-v0', etc.)
+        """
+        scenario_lower = scenario_name.lower()
+        
+        # Select environment based on scenario characteristics
+        if 'roundabout' in scenario_lower:
+            return 'roundabout-v0'
+        elif 'intersection' in scenario_lower or 'corner' in scenario_lower:
+            return 'intersection-v0'
+        elif 'merge' in scenario_lower:
+            return 'merge-v0'
+        else:
+            # Default to highway for all other scenarios
+            return 'highway-v0'
+    
     def create_env(self, scenario_name: str, obs_type: str, n_agents: int) -> gym.Env:
         """
         Create a single environment instance.
@@ -68,8 +91,11 @@ class MultiAgentEnvFactory:
         base_config["observation"] = obs_config
         base_config["action"] = action_config
         
+        # Select appropriate environment type based on scenario name
+        env_id = self._get_env_id_for_scenario(scenario_name)
+        
         # Create and configure environment
-        env = gym.make("highway-v0", config=base_config)
+        env = gym.make(env_id, config=base_config)
         
         return env
     
@@ -117,8 +143,11 @@ class MultiAgentEnvFactory:
         base_config["observation"] = obs_config
         base_config["action"] = action_config
         
+        # Select appropriate environment type based on scenario name
+        env_id = self._get_env_id_for_scenario(scenario_name)
+        
         # Create and configure environment
-        env = gym.make("highway-v0", config=base_config)
+        env = gym.make(env_id, config=base_config)
         
         # Configure ambulance-specific behavior after environment creation
         self._configure_ambulance_environment(env, base_config)
