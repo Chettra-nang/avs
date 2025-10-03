@@ -400,6 +400,8 @@ Use the provided scripts for easy data collection:
 # Activate the environment first (as required)
 source avs_venv/bin/activate
 
+# === BASIC COLLECTION (Sequential) ===
+
 # Collect from all 15 ambulance scenarios
 python collecting_ambulance_data/examples/basic_ambulance_collection.py \
     --episodes 50 \
@@ -413,12 +415,108 @@ python collecting_ambulance_data/examples/basic_ambulance_collection.py \
     --max-steps 75 \
     --output-dir data/emergency_response_dataset
 
+# === PARALLEL COLLECTION (Recommended for Large Datasets) ===
+
+# Collect all 30 scenarios with parallel processing (RECOMMENDED)
+python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
+    --episodes 50 \
+    --max-steps 100 \
+    --output-dir data/ambulance_dataset_parallel \
+    --max-workers 8 \
+    --batch-optimize
+
+# Large dataset collection (15,000 episodes total = 500 episodes × 30 scenarios)
+python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
+    --episodes 500 \
+    --max-steps 100 \
+    --output-dir data/ambulance_dataset_15k \
+    --max-workers 20 \
+    --batch-optimize \
+    --seed 42
+
+# Your exact command (30,000 episodes = 1000 episodes × 30 scenarios)
+python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
+    --episodes 1000 \
+    --max-steps 100 \
+    --output-dir data/ambulance_dataset_30k_cpu \
+    --max-workers 20 \
+    --batch-optimize \
+    --seed 42
+
+# With GPU acceleration (if available)
+python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
+    --episodes 500 \
+    --max-steps 100 \
+    --output-dir data/ambulance_dataset_gpu \
+    --max-workers 8 \
+    --gpu \
+    --batch-optimize
+
+# Collect specific scenarios in parallel
+python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
+    --scenarios highway_emergency_light highway_rush_hour roundabout_single_lane \
+    --episodes 100 \
+    --max-steps 100 \
+    --output-dir data/specific_scenarios \
+    --max-workers 3
+
+# === VISUALIZATION & TESTING ===
+
 # Run ambulance demonstration with visualization
 python collecting_ambulance_data/examples/ambulance_demo.py
+
+# Watch live highway-env simulation
+python collecting_ambulance_data/scenarios/watch_highway_live.py \
+    --scenario highway_emergency_moderate \
+    --duration 300
 
 # Test ambulance data collection pipeline
 python collecting_ambulance_data/examples/test_ambulance_collector.py
 ```
+
+#### Parallel Collection Parameters
+
+- `--episodes`: Number of episodes per scenario (e.g., 1000 per scenario)
+- `--max-steps`: Maximum steps per episode (default: 100)
+- `--output-dir`: Where to save collected data
+- `--max-workers`: Number of parallel CPU workers (default: auto-detect, recommended: 8-20)
+- `--batch-optimize`: Enable automatic batch size optimization for better performance
+- `--seed`: Random seed for reproducibility (default: 42)
+- `--gpu`: Enable GPU acceleration if available
+- `--scenarios`: Specific scenarios to collect (optional, default: all 30 scenarios)
+- `--n-agents`: Number of agents (default: 4)
+
+#### Performance Tips for Large-Scale Collection
+
+**For 15,000+ episodes:**
+```bash
+# Recommended configuration for large datasets
+python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
+    --episodes 1000 \
+    --max-steps 100 \
+    --output-dir data/ambulance_large_dataset \
+    --max-workers 16 \
+    --batch-optimize \
+    --seed 42
+
+# Monitor progress in another terminal
+watch -n 5 'ls -lh data/ambulance_large_dataset/*/episode_*.parquet | wc -l'
+```
+
+**CPU Configuration:**
+- Use `--max-workers` = 80% of your CPU cores for best performance
+- Example: 24 cores → use `--max-workers 20`
+- Reduce workers if system becomes unresponsive
+
+**Memory Management:**
+- Each worker uses ~2-4GB RAM
+- For 20 workers: expect 40-80GB RAM usage
+- Reduce `--max-workers` if you have memory constraints
+
+**Disk Space:**
+- Each episode: ~1-5 MB (varies by scenario complexity)
+- 30,000 episodes: ~30-150 GB total
+- Ensure sufficient disk space before starting
 
 ### Customizing Ambulance Data Collection
 
