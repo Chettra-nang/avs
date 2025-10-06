@@ -21,6 +21,16 @@ Scenarios 1-15: Original scenarios with NPC yielding
 Scenarios 16-30: NEW scenarios including roundabouts, corners, merges, and complex urban
 """
 
+"""
+FAST HIGHWAY TRANSFORMATION APPLIED:
+- Speed limits increased from 10-30 km/h to 40-115 km/h
+- Vehicle counts reduced by 25-60% to enable higher speeds
+- Reward speed ranges updated to match highway performance
+- Transformed on 2025-10-06 for realistic emergency vehicle response
+"""
+
+
+
 from typing import Dict, Any
 
 
@@ -48,6 +58,7 @@ def get_base_ambulance_config() -> Dict[str, Any]:
         "screen_height": 600,  # Horizontal image orientation
         "centering_position": [0.3, 0.5],  # Horizontal view centering
         "scaling": 5.5,
+        "speed_limit_kmh": 80,  # Fast highway speed limit
         "show_trajectories": False,
         "render_agent_views": True,
         "offscreen_rendering": True,
@@ -102,8 +113,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 12,
             "initial_lane_id": None,
             "duration": 40,
+            "speed_limit_kmh": 80,  # Fast highway emergency response
             "highway_conditions": "normal",
             "speed_limit": 110,
+            "reward_speed_range": [80, 110],  # Match speed limit for fast rewards
             "spawn_probability": 0.15,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -121,8 +134,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 18,
             "initial_lane_id": None,
             "duration": 45,
+            "speed_limit_kmh": 75,  # Fast arterial emergency response
             "highway_conditions": "normal",
             "speed_limit": 95,
+            "reward_speed_range": [70, 95],  # Match speed limit for fast rewards
             "spawn_probability": 0.25,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -140,8 +155,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 28,
             "initial_lane_id": None,
             "duration": 50,
+            "speed_limit_kmh": 65,  # Fast dense traffic emergency
             "highway_conditions": "congested",
             "speed_limit": 75,
+            "reward_speed_range": [50, 75],  # Match speed limit for fast rewards
             "spawn_probability": 0.4,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -159,8 +176,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 20,
             "initial_lane_id": None,
             "duration": 45,
+            "speed_limit_kmh": 55,  # Reduced speed for construction
             "highway_conditions": "construction",
             "speed_limit": 65,
+            "reward_speed_range": [45, 65],  # Match speed limit for fast rewards
             "spawn_probability": 0.3,
             "collision_reward": -1,
             "lanes_count": 3,  # Reduced lanes due to closure
@@ -179,8 +198,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 30,
             "initial_lane_id": None,
             "duration": 55,
+            "speed_limit_kmh": 70,  # Fast rush hour response
             "highway_conditions": "rush_hour",
             "speed_limit": 70,
+            "reward_speed_range": [50, 70],
             "spawn_probability": 0.45,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -200,6 +221,7 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 40,
             "highway_conditions": "accident",
             "speed_limit": 60,
+            "reward_speed_range": [40, 60],
             "spawn_probability": 0.2,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -214,11 +236,13 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "scenario_name": "highway_construction",
             "description": "Ambulance through highway construction zone",
             "traffic_density": "moderate",
-            "vehicles_count": 15,
+            "vehicles_count": 8,  # Reduced for fast speeds
             "initial_lane_id": None,
             "duration": 50,
+            "speed_limit_kmh": 50,  # Construction zone speed
             "highway_conditions": "construction",
             "speed_limit": 65,
+            "reward_speed_range": [45, 65],
             "spawn_probability": 0.2,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -236,8 +260,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 14,
             "initial_lane_id": None,
             "duration": 45,
+            "speed_limit_kmh": 60,  # Reduced speed for weather
             "highway_conditions": "weather",
             "speed_limit": 70,
+            "reward_speed_range": [50, 70],
             "spawn_probability": 0.25,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -252,11 +278,13 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "scenario_name": "highway_stop_and_go",
             "description": "Ambulance in stop-and-go highway traffic",
             "traffic_density": "heavy",
-            "vehicles_count": 25,
+            "vehicles_count": 15,  # Reduced for fast speeds
             "initial_lane_id": None,
             "duration": 60,
+            "speed_limit_kmh": 40,  # Stop and go traffic
             "highway_conditions": "stop_and_go",
             "speed_limit": 55,
+            "reward_speed_range": [35, 55],
             "spawn_probability": 0.4,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -274,8 +302,10 @@ def get_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "vehicles_count": 22,
             "initial_lane_id": None,
             "duration": 45,
+            "speed_limit_kmh": 85,  # Fast response with aggressive traffic
             "highway_conditions": "aggressive",
             "speed_limit": 85,
+            "reward_speed_range": [65, 85],  # Match speed limit for fast rewards
             "other_vehicles_type": "highway_env.vehicle.behavior.AggressiveVehicle",
             "spawn_probability": 0.3,
             "collision_reward": -1,
@@ -311,6 +341,7 @@ def get_additional_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 50,
             "highway_conditions": "merge_heavy",
             "speed_limit": 80,
+            "reward_speed_range": [60, 80],
             "spawn_probability": 0.35,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -330,6 +361,7 @@ def get_additional_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 45,
             "highway_conditions": "speed_variation",
             "speed_limit": 100,
+            "reward_speed_range": [80, 100],
             "spawn_probability": 0.25,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -349,6 +381,7 @@ def get_additional_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 40,
             "highway_conditions": "shoulder_available",
             "speed_limit": 75,
+            "reward_speed_range": [55, 75],
             "spawn_probability": 0.35,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -368,6 +401,7 @@ def get_additional_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 50,
             "highway_conditions": "truck_heavy",
             "speed_limit": 80,
+            "reward_speed_range": [60, 80],
             "spawn_probability": 0.2,
             "collision_reward": -1,
             "_ambulance_config": {
@@ -387,6 +421,7 @@ def get_additional_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 35,
             "highway_conditions": "time_critical",
             "speed_limit": 115,
+            "reward_speed_range": [95, 115],
             "spawn_probability": 0.2,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -428,6 +463,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 45,
             "highway_conditions": "roundabout_entry",
             "speed_limit": 45,
+            "reward_speed_range": [25, 45],
             "spawn_probability": 0.25,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -448,6 +484,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 50,
             "highway_conditions": "roundabout_complex",
             "speed_limit": 50,
+            "reward_speed_range": [30, 50],
             "spawn_probability": 0.35,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -468,6 +505,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 55,
             "highway_conditions": "roundabout_congested",
             "speed_limit": 40,
+            "reward_speed_range": [20, 40],
             "spawn_probability": 0.4,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -490,6 +528,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 40,
             "highway_conditions": "sharp_corner",
             "speed_limit": 55,
+            "reward_speed_range": [35, 55],
             "spawn_probability": 0.25,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -510,6 +549,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 45,
             "highway_conditions": "t_intersection",
             "speed_limit": 50,
+            "reward_speed_range": [30, 50],
             "spawn_probability": 0.3,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -530,6 +570,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 50,
             "highway_conditions": "four_way_intersection",
             "speed_limit": 45,
+            "reward_speed_range": [25, 45],
             "spawn_probability": 0.35,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -550,6 +591,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 40,
             "highway_conditions": "blind_corner",
             "speed_limit": 60,
+            "reward_speed_range": [40, 60],
             "spawn_probability": 0.2,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -570,6 +612,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 45,
             "highway_conditions": "urban_corner",
             "speed_limit": 50,
+            "reward_speed_range": [30, 50],
             "spawn_probability": 0.3,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -592,6 +635,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 45,
             "highway_conditions": "on_ramp_merge",
             "speed_limit": 90,
+            "reward_speed_range": [70, 90],
             "spawn_probability": 0.25,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -612,6 +656,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 50,
             "highway_conditions": "merge_congested",
             "speed_limit": 75,
+            "reward_speed_range": [55, 75],
             "spawn_probability": 0.35,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -632,6 +677,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 48,
             "highway_conditions": "zipper_merge",
             "speed_limit": 80,
+            "reward_speed_range": [60, 80],
             "spawn_probability": 0.3,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -652,6 +698,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 52,
             "highway_conditions": "multi_merge",
             "speed_limit": 85,
+            "reward_speed_range": [65, 85],
             "spawn_probability": 0.25,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -674,6 +721,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 55,
             "highway_conditions": "urban_complex",
             "speed_limit": 60,
+            "reward_speed_range": [40, 60],
             "spawn_probability": 0.4,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -694,6 +742,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 50,
             "highway_conditions": "highway_urban_transition",
             "speed_limit": 70,
+            "reward_speed_range": [50, 70],
             "spawn_probability": 0.3,
             "collision_reward": -2,
             "_ambulance_config": {
@@ -714,6 +763,7 @@ def get_extended_ambulance_scenarios() -> Dict[str, Dict[str, Any]]:
             "duration": 45,
             "highway_conditions": "night_reduced_visibility",
             "speed_limit": 95,
+            "reward_speed_range": [75, 95],
             "spawn_probability": 0.1,
             "collision_reward": -2,
             "_ambulance_config": {
