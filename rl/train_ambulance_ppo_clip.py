@@ -108,7 +108,7 @@ def make_env_thunk(config: dict, seed: int):
         
         # Create encoders
         vision_cfg = config.get("vision", {})
-        clip_name = vision_cfg.get("clip_model", "openai/clip-vit-base-patch32")
+        clip_name = vision_cfg.get("clip_model", "ViT-B-32")
         clip_device = vision_cfg.get("device", "auto")
         if clip_device == "auto":
             clip_device = pick_device()
@@ -291,7 +291,7 @@ def get_default_config(profile: str = "full") -> dict:
             "scenario": "highway_emergency_dense",
         },
         "vision": {
-            "clip_model": "openai/clip-vit-base-patch32",
+            "clip_model": "ViT-B-32",
             "device": "auto"
         },
         "text": {
