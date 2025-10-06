@@ -47,6 +47,10 @@ class AmbulanceHighwayCLIPWrapper(gym.Wrapper):
             # Use a default embedding if no text encoder available
             self.text_features = torch.zeros(384)
         
+        # Ensure text features are always 1D
+        if len(self.text_features.shape) > 1:
+            self.text_features = self.text_features.flatten()
+        
         # Get dimensions
         clip_dim = self.clip_encoder.feature_dim
         text_dim = self.text_features.shape[-1]
@@ -93,9 +97,14 @@ class AmbulanceHighwayCLIPWrapper(gym.Wrapper):
         else:
             vector_features = vector_features[:10]
         
+        # Ensure text features are properly flattened
+        text_features_np = self.text_features.cpu().numpy().astype(np.float32)
+        if len(text_features_np.shape) > 1:
+            text_features_np = text_features_np.flatten()
+        
         return {
             'image_features': self.cached_visual_features.cpu().numpy().astype(np.float32),
-            'text_features': self.text_features.cpu().numpy().astype(np.float32),
+            'text_features': text_features_np,
             'vector': vector_features.astype(np.float32)
         }
     
