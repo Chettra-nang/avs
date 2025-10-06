@@ -4,6 +4,9 @@ stable-baselines3>=2.3.0
 gymnasium>=0.29.0
 highway-env>=1.8.0
 
+# Imitation Learning for Behavior Cloning
+imitation>=1.0.0
+
 # Vision and text processing
 torch>=2.1.0
 open-clip-torch>=2.24.0
