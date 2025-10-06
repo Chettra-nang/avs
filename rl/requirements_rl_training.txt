@@ -1,0 +1,23 @@
+# Requirements for ambulance RL training with CLIP vision
+# Core RL packages
+stable-baselines3>=2.3.0
+gymnasium>=0.29.0
+highway-env>=1.8.0
+
+# Vision and text processing
+torch>=2.1.0
+open-clip-torch>=2.24.0
+transformers>=4.41.0
+sentence-transformers>=2.5.0
+
+# Data processing and utilities
+numpy>=1.24.0
+Pillow>=9.5.0
+opencv-python>=4.8.0
+
+# Monitoring and logging
+tensorboard>=2.14.0
+matplotlib>=3.7.0
+
+# Optional: For faster training
+# torchvision>=0.16.0  # If you want additional vision utilities
