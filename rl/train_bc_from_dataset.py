@@ -77,12 +77,20 @@ def train_behavior_cloning(
 ):
     """Train behavior cloning model from ambulance dataset."""
     
-    # Setup device
+    # Setup device - use explicit device parameter
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
+    # Force device if explicitly specified
+    print(f"Using device: {device} (CUDA available: {torch.cuda.is_available()})")
+    
     print(f"Training Behavior Cloning on {device}")
     print(f"Data directory: {data_dir}")
+    
+    # Validate CUDA availability if requested
+    if device == "cuda" and not torch.cuda.is_available():
+        print("WARNING: CUDA requested but not available. Falling back to CPU.")
+        device = "cpu"
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)

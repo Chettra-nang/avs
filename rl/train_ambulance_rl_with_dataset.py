@@ -351,12 +351,18 @@ def main():
         config["vision"]["device"] = args.device
     
     # Print setup
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    actual_device = args.device
+    if args.device == "auto":
+        actual_device = "cuda" if torch.cuda.is_available() else "cpu"
+    
     print("🚀 Ambulance RL Training with Dataset")
     print(f"Algorithm: {args.algorithm.upper()}")
-    print(f"Device: {device}")
+    print(f"Device: {actual_device}")
     print(f"Total steps: {args.steps:,}")
     print(f"Seeds: {args.seeds}")
+    
+    # Update config with correct device
+    config["vision"]["device"] = actual_device
     
     bc_policy_path = None
     
@@ -372,7 +378,7 @@ def main():
             data_dir=args.data_dir,
             output_dir="bc_models",
             epochs=args.bc_epochs,
-            device=args.device
+            device=actual_device
         )
     elif args.skip_bc:
         print("⏭️  Skipping Behavior Cloning")
