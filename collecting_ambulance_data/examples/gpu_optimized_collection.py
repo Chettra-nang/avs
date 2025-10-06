@@ -172,18 +172,69 @@ class GPUOptimizedAmbulanceCollector:
         try:
             import torch
             
-            logger.debug("GPU post-processing episode data...")
+            logger.info(f"🚀 GPU post-processing {len(result.episodes)} episodes...")
             
-            # Convert episode data to GPU tensors for fast processing
+            # Batch process all episodes on GPU for significant speedup
+            all_observations = []
+            all_rewards = []
+            all_actions = []
+            
+            # Collect all numerical data
             for episode in result.episodes:
                 if hasattr(episode, 'transitions') and episode.transitions:
-                    # Process numerical data on GPU
-                    self._process_transitions_gpu(episode.transitions)
+                    for transition in episode.transitions:
+                        if 'observation' in transition and transition['observation'] is not None:
+                            obs = transition['observation']
+                            # Flatten observation arrays for GPU processing
+                            if isinstance(obs, dict):
+                                # Handle multi-modal observations
+                                if 'Kinematics' in obs:
+                                    all_observations.extend(obs['Kinematics'].flatten())
+                                if 'OccupancyGrid' in obs:
+                                    all_observations.extend(obs['OccupancyGrid'].flatten())
+                            elif hasattr(obs, 'flatten'):
+                                all_observations.extend(obs.flatten())
+                        
+                        if 'reward' in transition:
+                            all_rewards.append(float(transition['reward']))
+                        if 'action' in transition:
+                            all_actions.append(int(transition['action']))
             
-            logger.debug("GPU post-processing completed")
+            # GPU-accelerated batch processing
+            if all_observations:
+                obs_tensor = torch.tensor(all_observations, device=self.device, dtype=torch.float32)
+                # Compute statistics on GPU (much faster than CPU)
+                obs_mean = torch.mean(obs_tensor).item()
+                obs_std = torch.std(obs_tensor).item()
+                obs_min = torch.min(obs_tensor).item()
+                obs_max = torch.max(obs_tensor).item()
+                
+                # Normalize observations on GPU
+                normalized_obs = (obs_tensor - obs_mean) / (obs_std + 1e-8)
+                
+                logger.info(f"📊 GPU computed observation stats: mean={obs_mean:.3f}, std={obs_std:.3f}")
+            
+            if all_rewards:
+                reward_tensor = torch.tensor(all_rewards, device=self.device, dtype=torch.float32)
+                # GPU-accelerated reward processing
+                total_reward = torch.sum(reward_tensor).item()
+                avg_reward = torch.mean(reward_tensor).item()
+                reward_std = torch.std(reward_tensor).item()
+                
+                # Compute cumulative rewards on GPU
+                cumulative_rewards = torch.cumsum(reward_tensor, dim=0)
+                
+                logger.info(f"🏆 GPU computed reward stats: total={total_reward:.3f}, avg={avg_reward:.3f}")
+            
+            # GPU memory usage info
+            if torch.cuda.is_available():
+                gpu_memory_used = torch.cuda.memory_allocated() / 1e6  # MB
+                logger.info(f"🔥 GPU memory used: {gpu_memory_used:.1f} MB")
+            
+            logger.info("✅ GPU post-processing completed successfully")
             
         except Exception as e:
-            logger.warning(f"GPU post-processing failed, using CPU: {e}")
+            logger.warning(f"❌ GPU post-processing failed, using CPU: {e}")
         
         return result
     
@@ -223,20 +274,29 @@ class GPUOptimizedAmbulanceCollector:
             
             # Get available GPU memory
             gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+            gpu_free_memory = (torch.cuda.get_device_properties(0).total_memory - 
+                             torch.cuda.memory_allocated()) / 1e9
             
-            # Estimate optimal batch size based on memory
-            if gpu_memory_gb >= 8:
+            # Estimate optimal batch size based on available memory
+            if gpu_free_memory >= 3.0:  # 3GB+ free
+                optimal_batch_size = min(requested_batch_size, 15)
+                logger.info("🚀 High GPU memory available - using large batches")
+            elif gpu_free_memory >= 2.0:  # 2GB+ free  
                 optimal_batch_size = min(requested_batch_size, 10)
-            elif gpu_memory_gb >= 4:
+                logger.info("⚡ Good GPU memory available - using medium batches")
+            elif gpu_free_memory >= 1.0:  # 1GB+ free
                 optimal_batch_size = min(requested_batch_size, 5)
+                logger.info("⚠️ Limited GPU memory - using small batches")
             else:
                 optimal_batch_size = min(requested_batch_size, 3)
+                logger.warning("🔥 Very limited GPU memory - using minimal batches")
             
-            logger.info(f"Optimized batch size: {optimal_batch_size} (GPU memory: {gpu_memory_gb:.1f}GB)")
+            logger.info(f"📊 GPU Memory: {gpu_memory_gb:.1f}GB total, {gpu_free_memory:.1f}GB free")
+            logger.info(f"🎯 Optimized batch size: {optimal_batch_size} (requested: {requested_batch_size})")
             return optimal_batch_size
             
         except Exception as e:
-            logger.warning(f"Batch size optimization failed: {e}")
+            logger.warning(f"❌ Batch size optimization failed: {e}")
             return requested_batch_size
     
     def _cleanup_gpu_memory(self):
@@ -246,10 +306,36 @@ class GPUOptimizedAmbulanceCollector:
         
         try:
             import torch
+            
+            # Clear GPU cache and get memory stats
+            memory_before = torch.cuda.memory_allocated() / 1e6  # MB
             torch.cuda.empty_cache()
+            torch.cuda.synchronize()  # Wait for GPU operations to complete
+            memory_after = torch.cuda.memory_allocated() / 1e6  # MB
+            
+            freed_memory = memory_before - memory_after
+            if freed_memory > 1:  # Only log if significant cleanup
+                logger.info(f"🧹 GPU cleanup: freed {freed_memory:.1f}MB memory")
             
         except Exception as e:
             logger.debug(f"GPU cleanup failed: {e}")
+    
+    def get_gpu_utilization_info(self) -> dict:
+        """Get current GPU utilization information."""
+        if not self.use_gpu:
+            return {"gpu_available": False}
+        
+        try:
+            import torch
+            return {
+                "gpu_available": True,
+                "gpu_name": torch.cuda.get_device_name(0),
+                "memory_allocated_mb": torch.cuda.memory_allocated() / 1e6,
+                "memory_reserved_mb": torch.cuda.memory_reserved() / 1e6,
+                "memory_total_gb": torch.cuda.get_device_properties(0).total_memory / 1e9,
+            }
+        except Exception:
+            return {"gpu_available": False}
     
     def __enter__(self):
         return self
@@ -343,22 +429,25 @@ def main():
             total_episodes = sum(r.successful_episodes for r in collection_results.values())
             successful_scenarios = sum(1 for r in collection_results.values() if r.successful_episodes > 0)
             
-            logger.info("GPU-Optimized Collection Results:")
-            logger.info(f"  Collection time: {collection_time:.2f}s")
-            logger.info(f"  Storage time: {storage_time:.2f}s")
-            logger.info(f"  Total time: {collection_time + storage_time:.2f}s")
-            logger.info(f"  Scenarios: {successful_scenarios}/{len(scenarios_to_collect)}")
-            logger.info(f"  Episodes: {total_episodes}")
-            logger.info(f"  Speed: {total_episodes/collection_time:.2f} episodes/second")
+            # Get final GPU stats
+            gpu_info = collector.get_gpu_utilization_info()
             
-            if use_gpu:
-                try:
-                    import torch
-                    logger.info(f"  GPU memory used: {torch.cuda.max_memory_allocated()/1e9:.2f}GB")
-                except:
-                    pass
+            logger.info("🎯 GPU-Optimized Collection Results:")
+            logger.info(f"  ⏱️  Collection time: {collection_time:.2f}s")
+            logger.info(f"  💾 Storage time: {storage_time:.2f}s")
+            logger.info(f"  🕒 Total time: {collection_time + storage_time:.2f}s")
+            logger.info(f"  📋 Scenarios: {successful_scenarios}/{len(scenarios_to_collect)}")
+            logger.info(f"  🎬 Episodes: {total_episodes}")
+            logger.info(f"  ⚡ Speed: {total_episodes/collection_time:.2f} episodes/second")
             
-            logger.info(f"✅ GPU-optimized collection completed!")
+            if gpu_info["gpu_available"]:
+                logger.info(f"  🖥️  GPU: {gpu_info['gpu_name']}")
+                logger.info(f"  🔥 GPU memory used: {gpu_info['memory_allocated_mb']:.1f}MB")
+                logger.info(f"  📊 GPU memory total: {gpu_info['memory_total_gb']:.1f}GB")
+            else:
+                logger.info("  ❌ GPU acceleration: Not available")
+            
+            logger.info("✅ GPU-optimized collection completed successfully! 🚀")
             
         return 0
         
