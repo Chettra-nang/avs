@@ -244,7 +244,7 @@ class LanguageSummarizer:
     # Scenario-specific templates
     def _free_flow_template(self, features: Dict, context: Dict) -> str:
         """Template for free flow scenarios."""
-        base = f"Vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+        base = f"Vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         if features['num_vehicles'] == 0:
             return f"{base} The highway is clear with no other vehicles visible."
@@ -259,7 +259,7 @@ class LanguageSummarizer:
     
     def _dense_commuting_template(self, features: Dict, context: Dict) -> str:
         """Template for dense commuting scenarios."""
-        base = f"In heavy commuter traffic, vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+        base = f"In heavy commuter traffic, vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         gap_info = f" {features['gap_description'].capitalize()}."
         ttc_info = f" Collision assessment: {features['ttc_description']}."
@@ -277,9 +277,9 @@ class LanguageSummarizer:
     def _stop_and_go_template(self, features: Dict, context: Dict) -> str:
         """Template for stop and go scenarios."""
         if features['speed_kmh'] < 10:
-            base = f"In stop-and-go traffic, vehicle is nearly stationary at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+            base = f"In stop-and-go traffic, vehicle is nearly stationary at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         else:
-            base = f"In stop-and-go traffic, vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+            base = f"In stop-and-go traffic, vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         gap_info = f" {features['gap_description'].capitalize()}."
         
@@ -292,7 +292,7 @@ class LanguageSummarizer:
     
     def _aggressive_neighbors_template(self, features: Dict, context: Dict) -> str:
         """Template for aggressive neighbors scenarios."""
-        base = f"Surrounded by aggressive drivers, vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+        base = f"Surrounded by aggressive drivers, vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         ttc_info = f" Collision risk: {features['ttc_description']}."
         
@@ -307,7 +307,7 @@ class LanguageSummarizer:
     
     def _lane_closure_template(self, features: Dict, context: Dict) -> str:
         """Template for lane closure scenarios."""
-        base = f"Approaching lane closure, vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+        base = f"Approaching lane closure, vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         if features['lane_position'] == self.num_lanes - 1:  # Leftmost lane
             merge_info = " In the continuing lane, monitoring merging traffic."
@@ -321,7 +321,7 @@ class LanguageSummarizer:
     
     def _time_budget_template(self, features: Dict, context: Dict) -> str:
         """Template for time budget scenarios."""
-        base = f"Under time pressure, vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+        base = f"Under time pressure, vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         if features['speed_kmh'] > 80:
             urgency_info = " Maintaining high speed to meet time constraints."
@@ -340,7 +340,7 @@ class LanguageSummarizer:
     
     def _default_template(self, features: Dict, context: Dict) -> str:
         """Default template for general scenarios."""
-        base = f"Vehicle is {features['speed_description']} at {features['speed_kmh']:.1f} km/h in the {features['lane_description']}."
+        base = f"Vehicle is {features['speed_description']} at {features['speed_kmh']:.2f} km/h in the {features['lane_description']}."
         
         if features['num_vehicles'] > 0:
             traffic_info = f" {features['traffic_description'].capitalize()} with {features['num_vehicles']} nearby vehicles."
