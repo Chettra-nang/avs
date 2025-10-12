@@ -51,11 +51,12 @@ fi
 echo ""
 echo "Step 3: Choose training method"
 echo "=========================================="
-echo "1) Offline DQN (value-based RL)"
-echo "2) Behavior Cloning (imitation learning)"
-echo "3) Both (DQN + BC in parallel)"
+echo "1) Offline DQN (value-based RL) - ~15-20 min"
+echo "2) Behavior Cloning (imitation learning) - ~5 min"
+echo "3) Offline PPO (policy gradient RL) - ~20-25 min"
+echo "4) Train all methods sequentially - ~40-50 min total"
 echo ""
-read -p "Enter choice [1-3]: " choice
+read -p "Enter choice [1-4]: " choice
 
 case $choice in
     1)
@@ -86,22 +87,25 @@ case $choice in
     
     3)
         echo ""
-        echo "Training both DQN and BC in parallel..."
+        echo "Training Offline PPO..."
         echo "=========================================="
-        
-        # DQN in background
-        echo "Starting DQN training in background..."
-        python3 offline_rl/trainers/train_offline_dqn.py \
+        python3 offline_rl/trainers/train_offline_ppo.py \
             --dataset "$DATASET_DIR/offline_dataset.npz" \
-            --output "$CHECKPOINT_DIR/offline_dqn" \
+            --output "$CHECKPOINT_DIR/offline_ppo" \
             --epochs 100 \
             --batch-size 256 \
             --lr 3e-4 \
-            --device cuda &
-        DQN_PID=$!
+            --device cuda
+        ;;
+    
+    4)
+        echo ""
+        echo "Training all methods sequentially..."
+        echo "=========================================="
         
-        # BC in foreground
-        echo "Starting BC training..."
+        # BC (fastest, good for quick validation)
+        echo ""
+        echo "[1/3] Training Behavior Cloning..."
         python3 offline_rl/trainers/train_bc.py \
             --dataset "$DATASET_DIR/offline_dataset.npz" \
             --output "$CHECKPOINT_DIR/bc_pretrain" \
@@ -110,10 +114,27 @@ case $choice in
             --lr 1e-4 \
             --device cuda
         
-        # Wait for DQN to finish
+        # DQN (value-based)
         echo ""
-        echo "Waiting for DQN training to complete..."
-        wait $DQN_PID
+        echo "[2/3] Training Offline DQN..."
+        python3 offline_rl/trainers/train_offline_dqn.py \
+            --dataset "$DATASET_DIR/offline_dataset.npz" \
+            --output "$CHECKPOINT_DIR/offline_dqn" \
+            --epochs 100 \
+            --batch-size 256 \
+            --lr 3e-4 \
+            --device cuda
+        
+        # PPO (policy-based, typically best performance)
+        echo ""
+        echo "[3/3] Training Offline PPO..."
+        python3 offline_rl/trainers/train_offline_ppo.py \
+            --dataset "$DATASET_DIR/offline_dataset.npz" \
+            --output "$CHECKPOINT_DIR/offline_ppo" \
+            --epochs 100 \
+            --batch-size 256 \
+            --lr 3e-4 \
+            --device cuda
         ;;
     
     *)
@@ -128,11 +149,30 @@ echo "✅ Training complete!"
 echo "========================================"
 echo ""
 echo "Checkpoints saved to:"
-echo "  - $CHECKPOINT_DIR/offline_dqn/"
-echo "  - $CHECKPOINT_DIR/bc_pretrain/"
+if [ $choice -eq 1 ] || [ $choice -eq 4 ]; then
+    echo "  - $CHECKPOINT_DIR/offline_dqn/"
+fi
+if [ $choice -eq 2 ] || [ $choice -eq 4 ]; then
+    echo "  - $CHECKPOINT_DIR/bc_pretrain/"
+fi
+if [ $choice -eq 3 ] || [ $choice -eq 4 ]; then
+    echo "  - $CHECKPOINT_DIR/offline_ppo/"
+fi
+echo ""
+echo "Training metrics:"
+if [ $choice -eq 1 ] || [ $choice -eq 4 ]; then
+    echo "  - $CHECKPOINT_DIR/offline_dqn/metrics.json"
+fi
+if [ $choice -eq 2 ] || [ $choice -eq 4 ]; then
+    echo "  - $CHECKPOINT_DIR/bc_pretrain/metrics.json"
+fi
+if [ $choice -eq 3 ] || [ $choice -eq 4 ]; then
+    echo "  - $CHECKPOINT_DIR/offline_ppo/metrics.json"
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Evaluate trained models on test scenarios"
-echo "  2. Visualize training metrics (metrics.json)"
-echo "  3. Fine-tune with online PPO (optional)"
+echo "  2. Visualize training metrics (plot metrics.json)"
+echo "  3. Compare performance across methods"
+echo "  4. See offline_rl/TRAINING_METHODS_COMPARISON.md for details"
 echo ""

@@ -105,14 +105,14 @@ def test_clip_encoder():
 
 
 def test_dqn_training(dataset_path: Path, output_dir: Path):
-    """Test 4: Offline DQN training (1 epoch)."""
+    """Test 4: DQN training (1 epoch)."""
     print("\n" + "="*60)
     print("TEST 4: Offline DQN Training")
     print("="*60)
     
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent / "rl/Ambulance_EGO_4500 2/Ambulance_EGO_4500/tools"))
-        from train_offline_dqn import OfflineRLDataset, OfflineDQNTrainer
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from offline_rl.trainers.train_offline_dqn import OfflineRLDataset, OfflineDQNTrainer
         
         # Load dataset
         dataset = OfflineRLDataset(dataset_path)
@@ -156,8 +156,8 @@ def test_bc_training(dataset_path: Path, output_dir: Path):
     print("="*60)
     
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent / "rl/Ambulance_EGO_4500 2/Ambulance_EGO_4500/tools"))
-        from train_bc import OfflineRLDataset, BCTrainer
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from offline_rl.trainers.train_bc import OfflineRLDataset, BCTrainer
         from torch.utils.data import random_split
         
         # Load and split dataset
