@@ -141,6 +141,7 @@ def main():
     parser.add_argument('--save-video', action='store_true', help='Save a short evaluation video to --video-dir')
     parser.add_argument('--video-dir', type=str, default='videos', help='Directory to save evaluation videos')
     parser.add_argument('--eval-episodes', type=int, default=2, help='Number of evaluation episodes to render/save')
+    parser.add_argument('--use-amp', action='store_true', help='Use mixed precision (AMP) when running on CUDA')
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
@@ -151,6 +152,8 @@ def main():
             torch.backends.cudnn.benchmark = True
     except Exception:
         pass
+
+    use_amp = bool(args.use_amp and device.type == 'cuda')
 
     env = make_env()
     obs0, _ = env.reset()
@@ -168,6 +171,9 @@ def main():
 
     policy = ActorCritic(obs_dim, n_actions).to(device)
     optimizer = optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
+    # micro-optimizations
+    optimizer_zero_kwargs = {'set_to_none': True} if hasattr(optimizer, 'zero_grad') else {}
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     # load checkpoint if exists
     ckpt = Path(args.checkpoint)
@@ -244,11 +250,24 @@ def main():
         returns = compute_gae(rewards_buffer, values, dones_buffer, last_value, args.gamma, args.gae_lambda)
         advantages = returns - values
 
-        obs_tensor = torch.as_tensor(np.stack(obs_buffer), dtype=torch.float32).to(device)
-        actions_tensor = torch.as_tensor(actions_buffer, dtype=torch.long).to(device)
-        old_logp = torch.as_tensor(logprobs_buffer, dtype=torch.float32).to(device)
-        returns_tensor = torch.as_tensor(returns, dtype=torch.float32).to(device)
-        advantages_tensor = torch.as_tensor(advantages, dtype=torch.float32).to(device)
+        # build tensors on CPU and transfer to device with non_blocking when possible
+        obs_tensor = torch.as_tensor(np.stack(obs_buffer), dtype=torch.float32)
+        actions_tensor = torch.as_tensor(actions_buffer, dtype=torch.long)
+        old_logp = torch.as_tensor(logprobs_buffer, dtype=torch.float32)
+        returns_tensor = torch.as_tensor(returns, dtype=torch.float32)
+        advantages_tensor = torch.as_tensor(advantages, dtype=torch.float32)
+        try:
+            obs_tensor = obs_tensor.to(device, non_blocking=True)
+            actions_tensor = actions_tensor.to(device, non_blocking=True)
+            old_logp = old_logp.to(device, non_blocking=True)
+            returns_tensor = returns_tensor.to(device, non_blocking=True)
+            advantages_tensor = advantages_tensor.to(device, non_blocking=True)
+        except Exception:
+            obs_tensor = obs_tensor.to(device)
+            actions_tensor = actions_tensor.to(device)
+            old_logp = old_logp.to(device)
+            returns_tensor = returns_tensor.to(device)
+            advantages_tensor = advantages_tensor.to(device)
         advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
 
         batch_size = args.minibatch_size
@@ -263,22 +282,45 @@ def main():
                 mb_returns = returns_tensor[mb_idx]
                 mb_adv = advantages_tensor[mb_idx]
 
-                logits, values = policy(mb_obs)
-                probs = torch.softmax(logits, dim=-1)
-                dist = torch.distributions.Categorical(probs)
-                logp = dist.log_prob(mb_actions)
-                ratio = torch.exp(logp - mb_oldlogp)
-                surr1 = ratio * mb_adv
-                surr2 = torch.clamp(ratio, 1.0 - args.clip, 1.0 + args.clip) * mb_adv
-                actor_loss = -torch.min(surr1, surr2).mean()
-                critic_loss = nn.functional.mse_loss(values, mb_returns)
-                entropy = dist.entropy().mean()
-                loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
+                # forward (mixed precision if enabled)
+                if use_amp:
+                    with torch.cuda.amp.autocast():
+                        logits, values = policy(mb_obs)
+                        probs = torch.softmax(logits, dim=-1)
+                        dist = torch.distributions.Categorical(probs)
+                        logp = dist.log_prob(mb_actions)
+                        ratio = torch.exp(logp - mb_oldlogp)
+                        surr1 = ratio * mb_adv
+                        surr2 = torch.clamp(ratio, 1.0 - args.clip, 1.0 + args.clip) * mb_adv
+                        actor_loss = -torch.min(surr1, surr2).mean()
+                        critic_loss = nn.functional.mse_loss(values, mb_returns)
+                        entropy = dist.entropy().mean()
+                        loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
+                else:
+                    logits, values = policy(mb_obs)
+                    probs = torch.softmax(logits, dim=-1)
+                    dist = torch.distributions.Categorical(probs)
+                    logp = dist.log_prob(mb_actions)
+                    ratio = torch.exp(logp - mb_oldlogp)
+                    surr1 = ratio * mb_adv
+                    surr2 = torch.clamp(ratio, 1.0 - args.clip, 1.0 + args.clip) * mb_adv
+                    actor_loss = -torch.min(surr1, surr2).mean()
+                    critic_loss = nn.functional.mse_loss(values, mb_returns)
+                    entropy = dist.entropy().mean()
+                    loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
 
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
-                optimizer.step()
+                optimizer.zero_grad(**optimizer_zero_kwargs)
+                if use_amp:
+                    scaler.scale(loss).backward()
+                    # unscale before clipping
+                    scaler.unscale_(optimizer)
+                    nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+                    optimizer.step()
 
         total_steps += args.n_steps
         ep += 1
