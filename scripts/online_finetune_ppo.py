@@ -200,6 +200,58 @@ def main():
         env = make_env()
         num_envs = 1
 
+        # Detect allowed action keys per-env by creating temporary envs (used for remapping)
+        per_env_allowed_keys = None
+        if num_envs > 1:
+            per_env_allowed_keys = []
+            for i in range(num_envs):
+                try:
+                    tmp = make_env()
+                    # try to find highway-env action mapping
+                    mapping = None
+                    try:
+                        at = getattr(tmp.unwrapped, 'action_type', None)
+                        if at is not None and hasattr(at, 'actions'):
+                            mapping = at.actions
+                    except Exception:
+                        mapping = None
+                    if mapping is None:
+                        mapping = getattr(tmp, 'actions', None)
+                    if mapping is None:
+                        # fall back to contiguous 0..n-1 using action_space.n if available
+                        if hasattr(tmp.action_space, 'n'):
+                            allowed = list(range(tmp.action_space.n))
+                        else:
+                            allowed = list(range(int(getattr(tmp.action_space, 'shape', [1])[0])))
+                    else:
+                        # mapping might be dict-like or list-like
+                        if isinstance(mapping, dict):
+                            allowed = list(mapping.keys())
+                        elif isinstance(mapping, (list, tuple)):
+                            # mapping is list of actions; allowed keys are indices
+                            # if values are ints we treat them as the env keys
+                            if all(isinstance(x, int) for x in mapping):
+                                allowed = list(mapping)
+                            else:
+                                allowed = list(range(len(mapping)))
+                        else:
+                            # unknown mapping type; try to coerce
+                            try:
+                                allowed = list(mapping)
+                            except Exception:
+                                allowed = list(range(int(getattr(tmp.action_space, 'n', 1))))
+                    per_env_allowed_keys.append(list(allowed))
+                    try:
+                        tmp.close()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f"⚠️  Could not instantiate temp env {i} for action-map detection: {e}")
+                    per_env_allowed_keys.append(list(range(n_actions)))
+            # report summary
+            unique_maps = {tuple(k) for k in per_env_allowed_keys}
+            print(f'🔍 Detected per-env allowed action keys for {num_envs} envs; unique mappings: {len(unique_maps)}')
+
     # Diagnostic: dump action map and exit (helps debug KeyError in highway-env mappings)
     if args.dump_action_map:
         try:
