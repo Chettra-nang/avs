@@ -20,6 +20,8 @@ parser.add_argument('--device', type=str, default='cuda', help='Torch device')
 parser.add_argument('--policy', type=str, default='MlpPolicy', help='DQN policy (MlpPolicy|CnnPolicy|MultiInputPolicy)')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--verbose', type=int, default=1)
+parser.add_argument('--num-envs', type=int, default=8, help='Number of parallel envs for SubprocVecEnv')
+parser.add_argument('--no-subproc', action='store_true', help='Force single-process DummyVecEnv (avoid subprocesses)')
 args = parser.parse_args()
 
 try:
@@ -52,7 +54,7 @@ def make_env(env_id: str, render_mode=None):
 
 def main():
     # create vectorized env (use subprocesses if available)
-    num_envs = 8
+    num_envs = int(args.num_envs)
     # prefer SubprocVecEnv but guard against multiprocessing import issues by
     # creating envs inside __main__ guarded function
     env = None
@@ -63,7 +65,10 @@ def main():
             def make_fn(eid=args.env_id):
                 return lambda: make_env(eid)
             env_fns.append(make_fn())
-        env = SubprocVecEnv(env_fns)
+        if not args.no_subproc:
+            env = SubprocVecEnv(env_fns)
+        else:
+            raise RuntimeError('Subproc disabled by --no-subproc')
     except Exception:
         # fallback to single-process DummyVecEnv
         env = DummyVecEnv([lambda: make_env(args.env_id)])
