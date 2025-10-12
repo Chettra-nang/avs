@@ -49,9 +49,9 @@ except ImportError:
 class BCPolicy(nn.Module):
     """BC Policy - matches train_bc_ultrafast.py"""
     
-    def __init__(self, feature_dim: int = 512, n_actions: int = 4):
+    def __init__(self, feature_dim: int = 512, n_actions: int = 5):
         super().__init__()
-        self.network = nn.Sequential(
+        self.policy = nn.Sequential(
             nn.Linear(feature_dim, 256),
             nn.ReLU(),
             nn.Dropout(0.1),
@@ -62,7 +62,7 @@ class BCPolicy(nn.Module):
         )
     
     def forward(self, clip_features):
-        return self.network(clip_features)
+        return self.policy(clip_features)
 
 
 class DQNNetwork(nn.Module):
@@ -70,7 +70,7 @@ class DQNNetwork(nn.Module):
     
     def __init__(self, feature_dim: int = 512, n_actions: int = 4):
         super().__init__()
-        self.network = nn.Sequential(
+        self.q_network = nn.Sequential(
             nn.Linear(feature_dim, 256),
             nn.ReLU(),
             nn.Dropout(0.1),
@@ -81,7 +81,7 @@ class DQNNetwork(nn.Module):
         )
     
     def forward(self, clip_features):
-        return self.network(clip_features)
+        return self.q_network(clip_features)
 
 
 class ActorCritic(nn.Module):
@@ -129,11 +129,18 @@ class BCAgent:
     
     def __init__(self, checkpoint_path: Path, device: str = 'cuda'):
         self.device = device
-        self.policy = BCPolicy(feature_dim=512, n_actions=4).to(device)
+        self.policy = BCPolicy(feature_dim=512, n_actions=5).to(device)
         
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        self.policy.load_state_dict(checkpoint['policy_state_dict'])
+        
+        # Handle different checkpoint formats
+        if 'policy_state_dict' in checkpoint:
+            self.policy.load_state_dict(checkpoint['policy_state_dict'])
+        else:
+            # Try loading directly
+            self.policy.load_state_dict(checkpoint)
+        
         self.policy.eval()
         
         # Load CLIP
@@ -172,7 +179,13 @@ class DQNAgent:
         
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        self.q_network.load_state_dict(checkpoint['q_net_state_dict'])
+        
+        # Handle different checkpoint formats
+        if 'q_net_state_dict' in checkpoint:
+            self.q_network.load_state_dict(checkpoint['q_net_state_dict'])
+        else:
+            self.q_network.load_state_dict(checkpoint)
+        
         self.q_network.eval()
         
         # Load CLIP
@@ -214,7 +227,13 @@ class PPOAgent:
         
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        self.ac_net.load_state_dict(checkpoint['ac_net_state_dict'])
+        
+        # Handle different checkpoint formats
+        if 'ac_net_state_dict' in checkpoint:
+            self.ac_net.load_state_dict(checkpoint['ac_net_state_dict'])
+        else:
+            self.ac_net.load_state_dict(checkpoint)
+        
         self.ac_net.eval()
         
         # Load CLIP
@@ -319,7 +338,7 @@ def create_highway_env():
     
     env = gym.make('highway-v0', render_mode='rgb_array')
     
-    # Configure to match training
+    # Configure to match training (GrayscaleObservation)
     env.unwrapped.config.update({
         "observation": {
             "type": "GrayscaleObservation",
@@ -327,6 +346,9 @@ def create_highway_env():
             "stack_size": 4,
             "weights": [0.2989, 0.5870, 0.1140],
             "scaling": 1.75,
+        },
+        "action": {
+            "type": "DiscreteMetaAction",  # 5 actions: SLOWER, IDLE, FASTER, LANE_LEFT, LANE_RIGHT
         },
         "policy_frequency": 2,
         "duration": 40,
@@ -414,8 +436,8 @@ def main():
     parser.add_argument('--compare-all', action='store_true',
                        help='Compare all three models')
     parser.add_argument('--checkpoint-dir', type=str,
-                       default='/home/chettra/ITC/Research/checkpoints',
-                       help='Directory containing all checkpoints')
+                       default='checkpoints',
+                       help='Directory containing all checkpoints (relative to AVs/avs/)')
     parser.add_argument('--n-episodes', type=int, default=10,
                        help='Number of evaluation episodes')
     parser.add_argument('--render', action='store_true',
