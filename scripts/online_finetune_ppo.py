@@ -350,6 +350,22 @@ def main():
                     dist = torch.distributions.Categorical(probs)
                     actions = dist.sample().cpu().numpy()
                     logps = dist.log_prob(torch.as_tensor(actions, device=device)).cpu().numpy()
+                # Sanity-check actions against detected action space size
+                try:
+                    expected_n = n_actions
+                except Exception:
+                    expected_n = None
+                if expected_n is not None:
+                    max_a = int(np.max(actions))
+                    min_a = int(np.min(actions))
+                    if max_a >= expected_n or min_a < 0:
+                        print(f"⚠️  Debug: sampled actions out of range for env.action_space (expected 0..{expected_n-1}): min={min_a} max={max_a}")
+                        try:
+                            print('    env.action_space:', env.action_space)
+                        except Exception:
+                            pass
+                        # Clip to valid range to avoid KeyError in env.step
+                        actions = np.clip(actions, 0, expected_n - 1)
                 # store per-env
                 for i in range(num_envs):
                     obs_buffer.append(feats[i].cpu().numpy())
@@ -375,6 +391,20 @@ def main():
                     dist = torch.distributions.Categorical(prob)
                     action = dist.sample().item()
                     logp = dist.log_prob(torch.as_tensor(action, device=device))
+                # single-env sanity check
+                try:
+                    expected_n = n_actions
+                except Exception:
+                    expected_n = None
+                if expected_n is not None:
+                    if int(action) < 0 or int(action) >= expected_n:
+                        print(f"⚠️  Debug: sampled single action out of range for env.action_space (expected 0..{expected_n-1}): action={action}")
+                        try:
+                            print('    env.action_space:', env.action_space)
+                        except Exception:
+                            pass
+                        # clamp
+                        action = int(max(0, min(expected_n - 1, int(action))))
                 obs_buffer.append(feat.cpu().numpy())
                 actions_buffer.append(action)
                 logprobs_buffer.append(logp.cpu().item())
