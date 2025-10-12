@@ -104,12 +104,25 @@ def compute_gae(rewards, values, dones, last_value, gamma, lam):
 
 
 def make_env():
+    # Ensure highway_env is imported so it registers its gymnasium entrypoints
+    try:
+        import highway_env  # registers envs like 'highway-v0'
+    except Exception as e:
+        print(f"⚠️  Could not import highway_env: {e}")
+
     if HAS_RLLANG and AmbulanceHighwayCLIPWrapper is not None:
         return AmbulanceHighwayCLIPWrapper({})
-    try:
-        return gym.make('highway-v0')
-    except Exception:
-        return gym.make('highway-v0')
+
+    # Try common highway-env ids with clear error messages
+    for env_id in ('highway-v0', 'highway-v1', 'highway-v2'):
+        try:
+            return gym.make(env_id)
+        except Exception as e:
+            # keep trying next id
+            last_err = e
+
+    # If none worked, raise the last error to surface the underlying issue
+    raise last_err
 
 
 def main():
@@ -124,9 +137,20 @@ def main():
     parser.add_argument('--gae_lambda', type=float, default=0.95)
     parser.add_argument('--clip', type=float, default=0.2)
     parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--render', action='store_true', help='Render a few evaluation episodes at the end')
+    parser.add_argument('--save-video', action='store_true', help='Save a short evaluation video to --video-dir')
+    parser.add_argument('--video-dir', type=str, default='videos', help='Directory to save evaluation videos')
+    parser.add_argument('--eval-episodes', type=int, default=2, help='Number of evaluation episodes to render/save')
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+
+    # Enable cuDNN autotuner for potential speedups on CUDA
+    try:
+        if device.type == 'cuda':
+            torch.backends.cudnn.benchmark = True
+    except Exception:
+        pass
 
     env = make_env()
     obs0, _ = env.reset()
@@ -277,6 +301,56 @@ def main():
         'total_steps': total_steps
     }, str(out))
     print('✅ Finished fine-tuning. Saved to', out)
+
+    # Optional short visual evaluation / video recording
+    if args.render or args.save_video:
+        print('🔎 Running short evaluation for rendering/video...')
+        try:
+            # Create a fresh eval env (don't reuse training env to avoid wrappers)
+            eval_env = make_env()
+            if args.save_video:
+                try:
+                    video_folder = Path(args.video_dir)
+                    video_folder.mkdir(parents=True, exist_ok=True)
+                    # gymnasium RecordVideo will handle ffmpeg/video saving if available
+                    eval_env = gym.wrappers.RecordVideo(eval_env, str(video_folder))
+                except Exception as e:
+                    print(f'⚠️  Could not enable RecordVideo wrapper: {e}. Falling back to manual frame capture.')
+
+            for epi in range(args.eval_episodes):
+                obs, _ = eval_env.reset()
+                done = False
+                frames = []
+                while not done:
+                    feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
+                    with torch.no_grad():
+                        logits, _ = policy(feat.unsqueeze(0))
+                        prob = torch.softmax(logits, dim=-1)
+                        dist = torch.distributions.Categorical(prob)
+                        action = int(dist.sample().item())
+                    out = eval_env.step(action)
+                    if len(out) == 5:
+                        obs, reward, terminated, truncated, info = out
+                        done = terminated or truncated
+                    else:
+                        obs, reward, done, info = out
+
+                    if args.render:
+                        try:
+                            eval_env.render()
+                        except Exception:
+                            pass
+
+            try:
+                eval_env.close()
+            except Exception:
+                pass
+            if args.save_video:
+                print(f'✅ Video(s) saved to {args.video_dir} (if RecordVideo succeeded)')
+            if args.render:
+                print('✅ Render finished')
+        except Exception as e:
+            print(f'⚠️  Evaluation/rendering failed: {e}')
 
 
 if __name__ == '__main__':
