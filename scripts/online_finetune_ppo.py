@@ -254,6 +254,7 @@ def main():
         obs_buffer.clear(); actions_buffer.clear(); logprobs_buffer.clear()
         rewards_buffer.clear(); dones_buffer.clear(); values_buffer.clear()
         obs, _ = env.reset()
+        epoch_start = time.time()
         for _ in range(args.n_steps):
             feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
             with torch.no_grad():
@@ -375,16 +376,19 @@ def main():
                 'total_steps': total_steps
             }, str(out))
         elapsed = time.time() - start_time
+        # compute epoch elapsed and steps/sec for this epoch
+        epoch_elapsed = time.time() - epoch_start
+        steps_per_sec = args.n_steps / epoch_elapsed if epoch_elapsed > 0 else float('inf')
         # Per-epoch GPU memory usage (if CUDA enabled)
         if torch.cuda.is_available():
             try:
                 alloc_mb = torch.cuda.memory_allocated() // 1024 ** 2
                 resv_mb = torch.cuda.memory_reserved() // 1024 ** 2
-                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | GPU mem alloc {alloc_mb}MB reserved {resv_mb}MB')
+                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s | GPU mem alloc {alloc_mb}MB reserved {resv_mb}MB')
             except Exception:
-                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | GPU mem info unavailable')
+                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s | GPU mem info unavailable')
         else:
-            print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s')
+            print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s')
 
     out = Path('checkpoints/ppo_online_finetuned_final.pt')
     out.parent.mkdir(parents=True, exist_ok=True)
