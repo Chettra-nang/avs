@@ -14,6 +14,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import gymnasium as gym
+try:
+    import imageio
+except Exception:
+    imageio = None
 
 # Try to use optional CLIP encoder/wrapper if available
 try:
@@ -103,7 +107,7 @@ def compute_gae(rewards, values, dones, last_value, gamma, lam):
     return np.array(returns, dtype=np.float32)
 
 
-def make_env():
+def make_env(render_mode=None):
     # Ensure highway_env is imported so it registers its gymnasium entrypoints
     try:
         import highway_env  # registers envs like 'highway-v0'
@@ -111,11 +115,17 @@ def make_env():
         print(f"⚠️  Could not import highway_env: {e}")
 
     if HAS_RLLANG and AmbulanceHighwayCLIPWrapper is not None:
-        return AmbulanceHighwayCLIPWrapper({})
+        try:
+            return AmbulanceHighwayCLIPWrapper({'render_mode': render_mode} if render_mode else {})
+        except Exception:
+            return AmbulanceHighwayCLIPWrapper({})
 
     # Try common highway-env ids with clear error messages
     for env_id in ('highway-v0', 'highway-v1', 'highway-v2'):
         try:
+            if render_mode is not None:
+                # many gym envs accept a render_mode kwarg
+                return gym.make(env_id, render_mode=render_mode)
             return gym.make(env_id)
         except Exception as e:
             # keep trying next id
@@ -180,10 +190,16 @@ def main():
             # preferred API in newer torch: torch.amp.GradScaler(device_type='cuda')
             scaler = torch.amp.GradScaler(device_type=getattr(device, 'type', 'cuda'))
         except Exception:
+            # try to call torch.amp.GradScaler without args first, then fall back
             try:
-                scaler = torch.cuda.amp.GradScaler()
+                scaler = torch.amp.GradScaler()
             except Exception:
-                scaler = None
+                try:
+                    # older torch versions may only have torch.cuda.amp.GradScaler
+                    # prefer passing device_type if supported
+                    scaler = torch.cuda.amp.GradScaler()
+                except Exception:
+                    scaler = None
 
     # load checkpoint if exists
     ckpt = Path(args.checkpoint)
@@ -359,12 +375,16 @@ def main():
         print('🔎 Running short evaluation for rendering/video...')
         try:
             # Create a fresh eval env (don't reuse training env to avoid wrappers)
-            eval_env = make_env()
+            # If saving video, request an env that returns RGB frames
             if args.save_video:
+                eval_env = make_env(render_mode='rgb_array')
+            else:
+                eval_env = make_env()
+            if args.save_video:
+                video_folder = Path(args.video_dir)
+                video_folder.mkdir(parents=True, exist_ok=True)
                 try:
-                    video_folder = Path(args.video_dir)
-                    video_folder.mkdir(parents=True, exist_ok=True)
-                    # gymnasium RecordVideo will handle ffmpeg/video saving if available
+                    # gymnasium RecordVideo will record if env supports rgb_array render mode
                     eval_env = gym.wrappers.RecordVideo(eval_env, str(video_folder))
                 except Exception as e:
                     print(f'⚠️  Could not enable RecordVideo wrapper: {e}. Falling back to manual frame capture.')
@@ -392,12 +412,38 @@ def main():
                             eval_env.render()
                         except Exception:
                             pass
+                    # Manual frame capture fallback: if RecordVideo couldn't be used, try to collect frames
+                    if args.save_video and imageio is not None:
+                        try:
+                            frm = None
+                            try:
+                                # some envs return frames from render()
+                                frm = eval_env.render()
+                            except Exception:
+                                # other envs may provide last rendered frame in info or require different call
+                                frm = None
+                            if frm is not None:
+                                frames.append(frm)
+                        except Exception:
+                            pass
 
             try:
                 eval_env.close()
             except Exception:
                 pass
+            # If we collected frames manually and imageio is available, write mp4 files
             if args.save_video:
+                if imageio is None:
+                    print('⚠️  imageio not installed; cannot write manual video. Install imageio[ffmpeg] to enable.')
+                else:
+                    # Write one MP4 per episode if frames were collected
+                    if len(frames) > 0:
+                        fname = Path(args.video_dir) / f'ppo_eval_ep{epi + 1}.mp4'
+                        try:
+                            imageio.mimwrite(str(fname), frames, fps=30)
+                            print(f'✅ Wrote manual video to {fname}')
+                        except Exception as e:
+                            print(f'⚠️  Failed to write video {fname}: {e}')
                 print(f'✅ Video(s) saved to {args.video_dir} (if RecordVideo succeeded)')
             if args.render:
                 print('✅ Render finished')
