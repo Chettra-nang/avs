@@ -139,7 +139,7 @@ class UltraFastBCTrainer:
         
         # Mixed precision
         self.use_amp = mixed_precision and device == 'cuda'
-        self.scaler = GradScaler('cuda') if self.use_amp else None
+        self.scaler = GradScaler() if self.use_amp else None
         
         self.step = 0
         
@@ -162,7 +162,7 @@ class UltraFastBCTrainer:
             
             if self.use_amp:
                 # Mixed precision training
-                with autocast('cuda'):
+                with autocast():
                     logits = self.policy(clip_features)
                     loss = F.cross_entropy(logits, actions)
                 
@@ -209,7 +209,7 @@ class UltraFastBCTrainer:
             actions = actions.to(self.device, non_blocking=True)
             
             if self.use_amp:
-                with autocast('cuda'):
+                with autocast():
                     logits = self.policy(clip_features)
                     loss = F.cross_entropy(logits, actions)
             else:
