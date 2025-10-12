@@ -200,14 +200,29 @@ def main():
     if CLIPImageEncoder is not None:
         clip_encoder = CLIPImageEncoder(device=str(device))
         # If obs0 is batched (vectorized env), pick first element to infer dim
-        if isinstance(obs0, (list, tuple)) or (hasattr(obs0, 'shape') and getattr(obs0, 'shape', None) and getattr(obs0, 'shape')[0] == num_envs):
+        if isinstance(obs0, (list, tuple)):
+            sample_obs = obs0[0]
+        elif isinstance(obs0, dict):
+            # batched dict observations have arrays as values with first dim == num_envs
+            try:
+                sample_obs = {k: (v[0] if hasattr(v, '__getitem__') else v) for k, v in obs0.items()}
+            except Exception:
+                sample_obs = obs0
+        elif (hasattr(obs0, 'shape') and getattr(obs0, 'shape', None) and getattr(obs0, 'shape')[0] == num_envs):
             sample_obs = obs0[0]
         else:
             sample_obs = obs0
         obs_feat = preprocess_obs(sample_obs, clip_encoder=clip_encoder, device=device)
         obs_dim = obs_feat.numel()
     else:
-        if isinstance(obs0, (list, tuple)) or (hasattr(obs0, 'shape') and getattr(obs0, 'shape', None) and getattr(obs0, 'shape')[0] == num_envs):
+        if isinstance(obs0, (list, tuple)):
+            sample_obs = obs0[0]
+        elif isinstance(obs0, dict):
+            try:
+                sample_obs = {k: (v[0] if hasattr(v, '__getitem__') else v) for k, v in obs0.items()}
+            except Exception:
+                sample_obs = obs0
+        elif (hasattr(obs0, 'shape') and getattr(obs0, 'shape', None) and getattr(obs0, 'shape')[0] == num_envs):
             sample_obs = obs0[0]
         else:
             sample_obs = obs0
@@ -276,6 +291,23 @@ def main():
     ep = 0
     start_time = time.time()
 
+    # helper to extract single-env observation from a batched observation (supports dicts)
+    def _extract_obs_from_batch(obs_batch, idx: int):
+        if isinstance(obs_batch, dict):
+            single = {}
+            for k, v in obs_batch.items():
+                try:
+                    single[k] = v[idx]
+                except Exception:
+                    single[k] = v
+            return single
+        # lists/tuples and numpy arrays support indexing
+        try:
+            return obs_batch[idx]
+        except Exception:
+            return obs_batch
+
+
     while total_steps < args.timesteps:
         obs_buffer.clear(); actions_buffer.clear(); logprobs_buffer.clear()
         rewards_buffer.clear(); dones_buffer.clear(); values_buffer.clear()
@@ -288,7 +320,7 @@ def main():
                 # preprocess each env's obs into feature vector
                 feats = []
                 for i in range(num_envs):
-                    o = obs0[i] if isinstance(obs0, (list, tuple)) else obs0[i]
+                    o = _extract_obs_from_batch(obs0, i)
                     f = preprocess_obs(o, clip_encoder=clip_encoder, device=device)
                     feats.append(f)
                 feat_batch = torch.stack(feats, dim=0).to(device)
@@ -339,14 +371,40 @@ def main():
                 if done:
                     obs0, _ = env.reset()
 
-        with torch.no_grad():
-            last_feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
-            _, last_value = policy(last_feat.unsqueeze(0))
-            last_value = last_value.cpu().item()
+        # Compute last values and per-environment returns when using vectorized envs
+        if num_envs > 1:
+            # get last values per env from current obs0
+            last_feats = []
+            for i in range(num_envs):
+                o = _extract_obs_from_batch(obs0, i)
+                last_feats.append(preprocess_obs(o, clip_encoder=clip_encoder, device=device))
+            last_feat_batch = torch.stack(last_feats, dim=0).to(device)
+            with torch.no_grad():
+                _, last_values_tensor = policy(last_feat_batch)
+            last_values = last_values_tensor.cpu().numpy()
 
-        values = np.array(values_buffer, dtype=np.float32)
-        returns = compute_gae(rewards_buffer, values, dones_buffer, last_value, args.gamma, args.gae_lambda)
-        advantages = returns - values
+            rewards_arr = np.array(rewards_buffer, dtype=np.float32).reshape(args.n_steps, num_envs)
+            values_arr = np.array(values_buffer, dtype=np.float32).reshape(args.n_steps, num_envs)
+            dones_arr = np.array(dones_buffer, dtype=np.bool_).reshape(args.n_steps, num_envs)
+
+            # compute returns per env and then flatten in the same interleaved order
+            returns_per_env = []
+            for env_i in range(num_envs):
+                r = compute_gae(rewards_arr[:, env_i], values_arr[:, env_i], dones_arr[:, env_i], float(last_values[env_i]), args.gamma, args.gae_lambda)
+                returns_per_env.append(r)
+            # stack as shape (n_steps, num_envs) then flatten row-major to match storage order
+            returns = np.stack(returns_per_env, axis=1).reshape(-1, order='C')
+            values = values_arr.reshape(-1, order='C')
+            advantages = returns - values
+        else:
+            with torch.no_grad():
+                last_feat = preprocess_obs(obs0, clip_encoder=clip_encoder, device=device)
+                _, last_value = policy(last_feat.unsqueeze(0))
+                last_value = last_value.cpu().item()
+
+            values = np.array(values_buffer, dtype=np.float32)
+            returns = compute_gae(rewards_buffer, values, dones_buffer, last_value, args.gamma, args.gae_lambda)
+            advantages = returns - values
 
         # build tensors on CPU and transfer to device with non_blocking when possible
         obs_tensor = torch.as_tensor(np.stack(obs_buffer), dtype=torch.float32)
