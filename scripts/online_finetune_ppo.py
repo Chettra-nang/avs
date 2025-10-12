@@ -156,6 +156,17 @@ def main():
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
+    # GPU diagnostic prints so you can confirm device usage
+    print('Device:', device)
+    print('torch.cuda.is_available():', torch.cuda.is_available())
+    if torch.cuda.is_available():
+        try:
+            print('cuda device count:', torch.cuda.device_count())
+            print('current device idx:', torch.cuda.current_device())
+            print('device name:', torch.cuda.get_device_name(torch.cuda.current_device()))
+        except Exception as e:
+            print('Could not query CUDA device name:', e)
+
     # Enable cuDNN autotuner for potential speedups on CUDA
     try:
         if device.type == 'cuda':
@@ -310,7 +321,12 @@ def main():
 
                 # forward (mixed precision if enabled)
                 if use_amp:
-                    with torch.cuda.amp.autocast():
+                    # use the newer torch.amp.autocast API when available
+                    try:
+                        autocast_ctx = torch.amp.autocast(device_type=getattr(device, 'type', 'cuda'))
+                    except Exception:
+                        autocast_ctx = torch.cuda.amp.autocast()
+                    with autocast_ctx:
                         logits, values = policy(mb_obs)
                         probs = torch.softmax(logits, dim=-1)
                         dist = torch.distributions.Categorical(probs)
@@ -359,7 +375,16 @@ def main():
                 'total_steps': total_steps
             }, str(out))
         elapsed = time.time() - start_time
-        print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s')
+        # Per-epoch GPU memory usage (if CUDA enabled)
+        if torch.cuda.is_available():
+            try:
+                alloc_mb = torch.cuda.memory_allocated() // 1024 ** 2
+                resv_mb = torch.cuda.memory_reserved() // 1024 ** 2
+                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | GPU mem alloc {alloc_mb}MB reserved {resv_mb}MB')
+            except Exception:
+                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | GPU mem info unavailable')
+        else:
+            print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s')
 
     out = Path('checkpoints/ppo_online_finetuned_final.pt')
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -432,19 +457,21 @@ def main():
             except Exception:
                 pass
             # If we collected frames manually and imageio is available, write mp4 files
-            if args.save_video:
-                if imageio is None:
-                    print('⚠️  imageio not installed; cannot write manual video. Install imageio[ffmpeg] to enable.')
-                else:
-                    # Write one MP4 per episode if frames were collected
-                    if len(frames) > 0:
-                        fname = Path(args.video_dir) / f'ppo_eval_ep{epi + 1}.mp4'
-                        try:
-                            imageio.mimwrite(str(fname), frames, fps=30)
-                            print(f'✅ Wrote manual video to {fname}')
-                        except Exception as e:
-                            print(f'⚠️  Failed to write video {fname}: {e}')
-                print(f'✅ Video(s) saved to {args.video_dir} (if RecordVideo succeeded)')
+                if args.save_video:
+                    if imageio is None:
+                        print('⚠️  imageio not installed; cannot write manual video. Install imageio[ffmpeg] to enable.')
+                    else:
+                        # Write one MP4 per episode if frames were collected
+                        if len(frames) > 0:
+                            fname = Path(args.video_dir) / f'ppo_eval_ep{epi + 1}.mp4'
+                            try:
+                                # ensure frames are uint8 images
+                                arrs = [(f.astype('uint8') if hasattr(f, 'astype') else f) for f in frames]
+                                imageio.mimwrite(str(fname), arrs, fps=30)
+                                print(f'✅ Wrote manual video to {fname}')
+                            except Exception as e:
+                                print(f'⚠️  Failed to write video {fname}: {e}')
+                    print(f'✅ Video(s) saved to {args.video_dir} (if RecordVideo succeeded)')
             if args.render:
                 print('✅ Render finished')
         except Exception as e:
