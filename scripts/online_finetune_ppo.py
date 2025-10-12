@@ -378,6 +378,11 @@ def main():
                     actions = np.asarray(actions, dtype=np.int64)
                 except Exception:
                     actions = np.asarray(actions)
+                # Convert to plain Python ints list to avoid numpy-scalar key lookup issues in some envs
+                try:
+                    actions = [int(x) for x in actions]
+                except Exception:
+                    pass
                 # store per-env
                 for i in range(num_envs):
                     obs_buffer.append(feats[i].cpu().numpy())
