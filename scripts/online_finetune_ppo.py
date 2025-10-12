@@ -29,6 +29,10 @@ except Exception:
     AmbulanceHighwayCLIPWrapper = None
     HAS_RLLANG = False
 
+# runtime toggles set from CLI
+FAST_ENV = False
+PIN_MEMORY = False
+
 
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim, n_actions, hidden=256):
@@ -121,7 +125,11 @@ def make_env(render_mode=None):
             return AmbulanceHighwayCLIPWrapper({})
 
     # Try common highway-env ids with clear error messages
-    for env_id in ('highway-v0', 'highway-v1', 'highway-v2'):
+    if FAST_ENV:
+        env_candidates = ('highway-fast-v0', 'highway-v0', 'highway-v1', 'highway-v2')
+    else:
+        env_candidates = ('highway-v0', 'highway-v1', 'highway-v2')
+    for env_id in env_candidates:
         try:
             if render_mode is not None:
                 # many gym envs accept a render_mode kwarg
@@ -155,7 +163,14 @@ def main():
     parser.add_argument('--num-envs', type=int, default=1, help='Number of parallel envs (vectorized). Uses AsyncVectorEnv when >1')
     parser.add_argument('--debug-vec', action='store_true', help='Print a one-time debug dump of vectorized obs structure')
     parser.add_argument('--dump-action-map', action='store_true', help='Create one env, print its action_space and highway-env action mapping then exit')
+    parser.add_argument('--fast-env', action='store_true', help='Prefer lower-fidelity, faster highway-fast-v0 when available')
+    parser.add_argument('--pin-memory', action='store_true', help='Pin CPU tensors before transferring to CUDA to enable non-blocking copies')
     args = parser.parse_args()
+
+    # apply CLI toggles
+    global FAST_ENV, PIN_MEMORY
+    FAST_ENV = bool(args.fast_env)
+    PIN_MEMORY = bool(args.pin_memory)
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
@@ -607,6 +622,12 @@ def main():
         returns_tensor = torch.as_tensor(returns, dtype=torch.float32)
         advantages_tensor = torch.as_tensor(advantages, dtype=torch.float32)
         try:
+            if PIN_MEMORY and device.type == 'cuda':
+                obs_tensor = obs_tensor.pin_memory()
+                actions_tensor = actions_tensor.pin_memory()
+                old_logp = old_logp.pin_memory()
+                returns_tensor = returns_tensor.pin_memory()
+                advantages_tensor = advantages_tensor.pin_memory()
             obs_tensor = obs_tensor.to(device, non_blocking=True)
             actions_tensor = actions_tensor.to(device, non_blocking=True)
             old_logp = old_logp.to(device, non_blocking=True)
