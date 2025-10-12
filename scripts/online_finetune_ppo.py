@@ -153,6 +153,7 @@ def main():
     parser.add_argument('--eval-episodes', type=int, default=2, help='Number of evaluation episodes to render/save')
     parser.add_argument('--use-amp', action='store_true', help='Use mixed precision (AMP) when running on CUDA')
     parser.add_argument('--num-envs', type=int, default=1, help='Number of parallel envs (vectorized). Uses AsyncVectorEnv when >1')
+    parser.add_argument('--debug-vec', action='store_true', help='Print a one-time debug dump of vectorized obs structure')
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
@@ -195,6 +196,21 @@ def main():
         num_envs = 1
 
     obs0, _ = env.reset()
+
+    # If requested, print a one-time compact debug dump of the batched obs structure
+    if args.debug_vec and num_envs > 1:
+        def _dump_obs_structure(name, o):
+            try:
+                if isinstance(o, dict):
+                    s = {k: (type(v).__name__, getattr(v, 'shape', None)) for k, v in o.items()}
+                else:
+                    s = (type(o).__name__, getattr(o, 'shape', None))
+                print(f"[debug-vec] {name}: {s}")
+            except Exception as e:
+                print(f"[debug-vec] {name}: <error inspecting: {e}>")
+
+        print('🔍 Debug: vectorized env obs structure (one-time)')
+        _dump_obs_structure('obs0', obs0)
 
     clip_encoder = None
     if CLIPImageEncoder is not None:
