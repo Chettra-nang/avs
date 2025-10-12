@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:17:09.012821",
+  "base_path": "batch_2212763",
+  "scenarios": {
+    "roundabout_multi_lane": [
+      {
+        "transitions_file": "roundabout_multi_lane/20251007_011707-5aa78e3b_transitions.parquet",
+        "metadata_file": "roundabout_multi_lane/20251007_011707-5aa78e3b_meta.jsonl",
+        "created": "2025-10-07T01:17:09.012799"
+      }
+    ],
+    "roundabout_congested": [
+      {
+        "transitions_file": "roundabout_congested/20251007_011708-33358897_transitions.parquet",
+        "metadata_file": "roundabout_congested/20251007_011708-33358897_meta.jsonl",
+        "created": "2025-10-07T01:17:09.012819"
+      }
+    ]
+  },
+  "total_files": 2
+}

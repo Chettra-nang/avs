@@ -12,119 +12,143 @@ from .config import OBSERVATION_CONFIGS
 
 
 class MultiAgentEnvFactory:
-    """
-    Factory class for creating and configuring HighwayEnv instances 
-    with different observation modalities.
-    
-    Ensures consistent multi-agent configurations across different observation
-    types while maintaining synchronization through identical base configurations.
-    """
-    
+    """Simple, robust factory for creating highway-env instances used by the collector."""
+
     def __init__(self):
         self._scenario_registry = ScenarioRegistry()
         self._supported_obs_types = list(OBSERVATION_CONFIGS.keys())
-    
+
     def _get_env_id_for_scenario(self, scenario_name: str) -> str:
-        """
-        Determine the appropriate highway-env environment ID based on scenario name.
-        
-        Args:
-            scenario_name: Name of the scenario
-            
-        Returns:
-            Environment ID string (e.g., 'highway-v0', 'roundabout-v0', etc.)
-        """
         scenario_lower = scenario_name.lower()
-        
-        # Select environment based on scenario characteristics
         if 'roundabout' in scenario_lower:
             return 'roundabout-v0'
-        elif 'intersection' in scenario_lower or 'corner' in scenario_lower:
-            return 'intersection-v0'
-        elif 'merge' in scenario_lower:
+        if 'intersection' in scenario_lower or 'corner' in scenario_lower:
+            return 'intersection-v1'
+        if 'merge' in scenario_lower:
             return 'merge-v0'
-        else:
-            # Default to highway for all other scenarios
-            return 'highway-v0'
-    
+        return 'highway-v0'
+
     def create_env(self, scenario_name: str, obs_type: str, n_agents: int) -> gym.Env:
-        """
-        Create a single environment instance.
-        
-        Args:
-            scenario_name: Name of the scenario configuration
-            obs_type: Type of observation (Kinematics, OccupancyGrid, GrayscaleObservation)
-            n_agents: Number of controlled agents
-            
-        Returns:
-            Configured gymnasium environment
-            
-        Raises:
-            ValueError: If obs_type is not supported or n_agents is invalid
-            KeyError: If scenario_name is not found
-        """
         if obs_type not in self._supported_obs_types:
-            raise ValueError(f"Unsupported observation type: {obs_type}. "
-                           f"Supported types: {self._supported_obs_types}")
-        
+            raise ValueError(f"Unsupported observation type: {obs_type}")
         if n_agents < 1:
-            raise ValueError(f"Number of agents must be >= 1, got {n_agents}")
-        
-        # Get base configuration
+            raise ValueError("n_agents must be >= 1")
+
         base_config = self.get_base_config(scenario_name, n_agents)
-        
-        # Add observation-specific configuration
+
         if n_agents > 1:
-            # For multi-agent environments, wrap the observation and action configs
-            obs_config = {
-                "type": "MultiAgentObservation",
-                "observation_config": copy.deepcopy(OBSERVATION_CONFIGS[obs_type])
-            }
-            action_config = {
-                "type": "MultiAgentAction",
-                "action_config": {"type": "DiscreteMetaAction"}
-            }
+            obs_config = {"type": "MultiAgentObservation", "observation_config": copy.deepcopy(OBSERVATION_CONFIGS[obs_type])}
+            action_config = {"type": "MultiAgentAction", "action_config": {"type": "DiscreteMetaAction"}}
         else:
             obs_config = copy.deepcopy(OBSERVATION_CONFIGS[obs_type])
             action_config = {"type": "DiscreteMetaAction"}
-        
+
         base_config["observation"] = obs_config
         base_config["action"] = action_config
-        
-        # Select appropriate environment type based on scenario name
+
         env_id = self._get_env_id_for_scenario(scenario_name)
-        
-        # Create and configure environment
         env = gym.make(env_id, config=base_config)
-        
         return env
-    
+
     def create_ambulance_env(self, scenario_name: str, obs_type: str, n_agents: int) -> gym.Env:
-        """
-        Create a single ambulance environment instance with ambulance ego vehicle.
-        
-        Args:
-            scenario_name: Name of the ambulance scenario configuration
-            obs_type: Type of observation (Kinematics, OccupancyGrid, GrayscaleObservation)
-            n_agents: Number of controlled agents (first agent will be ambulance)
-            
-        Returns:
-            Configured gymnasium environment with ambulance ego vehicle
-            
-        Raises:
-            ValueError: If obs_type is not supported or n_agents is invalid
-            KeyError: If scenario_name is not found
-        """
-        if obs_type not in self._supported_obs_types:
-            raise ValueError(f"Unsupported observation type: {obs_type}. "
-                           f"Supported types: {self._supported_obs_types}")
-        
-        if n_agents < 1:
-            raise ValueError(f"Number of agents must be >= 1, got {n_agents}")
-        
-        # Get ambulance-specific base configuration
+        # Build ambulance-specific environment using ambulance base config and same observation wiring
         base_config = self.get_ambulance_base_config(scenario_name, n_agents)
-        
+
+        if obs_type not in self._supported_obs_types:
+            raise ValueError(f"Unsupported observation type: {obs_type}")
+
+        if n_agents > 1:
+            obs_config = {"type": "MultiAgentObservation", "observation_config": copy.deepcopy(OBSERVATION_CONFIGS[obs_type])}
+            action_config = {"type": "MultiAgentAction", "action_config": {"type": "DiscreteMetaAction"}}
+        else:
+            obs_config = copy.deepcopy(OBSERVATION_CONFIGS[obs_type])
+            action_config = {"type": "DiscreteMetaAction"}
+
+        base_config["observation"] = obs_config
+        base_config["action"] = action_config
+
+        env_id = self._get_env_id_for_scenario(scenario_name)
+        env = gym.make(env_id, config=base_config)
+
+        # Attach simple ambulance metadata so collector can detect ambulance-enabled envs
+        self._configure_ambulance_metadata(env, base_config)
+        return env
+
+    def create_parallel_envs(self, scenario_name: str, n_agents: int,
+                             enabled_modalities: Optional[List[str]] = None) -> Dict[str, gym.Env]:
+        modalities = enabled_modalities or self._supported_obs_types
+        parallel: Dict[str, gym.Env] = {}
+        for m in modalities:
+            if m not in self._supported_obs_types:
+                raise ValueError(f"Unsupported modality: {m}")
+            parallel[m] = self.create_env(scenario_name, m, n_agents)
+        return parallel
+
+    def create_parallel_ambulance_envs(self, scenario_name: str, n_agents: int,
+                                       enabled_modalities: Optional[List[str]] = None) -> Dict[str, gym.Env]:
+        modalities = enabled_modalities or self._supported_obs_types
+        parallel: Dict[str, gym.Env] = {}
+        for m in modalities:
+            if m not in self._supported_obs_types:
+                raise ValueError(f"Unsupported modality: {m}")
+            parallel[m] = self.create_ambulance_env(scenario_name, m, n_agents)
+        return parallel
+
+    def get_base_config(self, scenario_name: str, n_agents: int) -> Dict[str, Any]:
+        if n_agents < 1:
+            raise ValueError("n_agents must be >= 1")
+        scenario_config = self._scenario_registry.get_scenario_config(scenario_name)
+        cfg = copy.deepcopy(scenario_config)
+        if n_agents > 1:
+            cfg["controlled_vehicles"] = n_agents
+        return cfg
+
+    def get_ambulance_base_config(self, scenario_name: str, n_agents: int) -> Dict[str, Any]:
+        if n_agents < 1:
+            raise ValueError("n_agents must be >= 1")
+        if n_agents > 4:
+            raise ValueError("Ambulance scenarios support up to 4 agents")
+        try:
+            from collecting_ambulance_data.scenarios.ambulance_scenarios import get_scenario_by_name
+            scenario_config = get_scenario_by_name(scenario_name)
+        except Exception:
+            scenario_config = self._scenario_registry.get_scenario_config(scenario_name)
+
+        base_config: Dict[str, Any] = {
+            "lanes_count": 4,
+            "vehicles_count": scenario_config.get("vehicles_count", 20),
+            "duration": scenario_config.get("duration", 40),
+            "initial_lane_id": scenario_config.get("initial_lane_id"),
+            "ego_spacing": scenario_config.get("ego_spacing", 2),
+            "other_vehicles_type": scenario_config.get("other_vehicles_type", "highway_env.vehicle.behavior.IDMVehicle"),
+            "controlled_vehicles": n_agents,
+            "_ambulance_config": {
+                "ambulance_agent_index": 0,
+                "emergency_priority": scenario_config.get("_ambulance_config", {}).get("emergency_priority", "high"),
+                "ambulance_behavior": scenario_config.get("_ambulance_config", {}).get("ambulance_behavior", "emergency_response"),
+                "other_agents_type": "normal",
+            },
+            "simulation_frequency": scenario_config.get("simulation_frequency", 15),
+            "policy_frequency": scenario_config.get("policy_frequency", 1),
+            "render_mode": None,
+            "offscreen_rendering": scenario_config.get("offscreen_rendering", True),
+        }
+        if "initial_spacing" in scenario_config:
+            base_config["initial_spacing"] = scenario_config["initial_spacing"]
+        if "speed_limit" in scenario_config:
+            base_config["speed_limit"] = scenario_config["speed_limit"] / 3.6
+        return base_config
+
+    def _configure_ambulance_metadata(self, env: gym.Env, config: Dict[str, Any]) -> None:
+        if hasattr(env, 'unwrapped'):
+            env_unwrapped = env.unwrapped
+            env_unwrapped._ambulance_config = config.get('_ambulance_config', {})
+            env_unwrapped._is_ambulance_env = True
+            env_unwrapped._ambulance_agent_index = env_unwrapped._ambulance_config.get('ambulance_agent_index', 0)
+            env_unwrapped.ambulance_enabled = True
+
+    def get_supported_observation_types(self) -> List[str]:
+        return self._supported_obs_types.copy()
         # Add observation-specific configuration
         if n_agents > 1:
             # For multi-agent environments, wrap the observation and action configs
@@ -377,7 +401,10 @@ class MultiAgentEnvFactory:
             base_config["spawn_probability"] = scenario_config["spawn_probability"]
             
         if "speed_limit" in scenario_config:
-            base_config["speed_limit"] = scenario_config["speed_limit"]
+            # Convert speed_limit from km/h to m/s for Highway-Env
+            speed_limit_kmh = scenario_config["speed_limit"]
+            speed_limit_ms = speed_limit_kmh / 3.6  # Convert km/h to m/s
+            base_config["speed_limit"] = speed_limit_ms
             
         if "highway_conditions" in scenario_config:
             base_config["highway_conditions"] = scenario_config["highway_conditions"]

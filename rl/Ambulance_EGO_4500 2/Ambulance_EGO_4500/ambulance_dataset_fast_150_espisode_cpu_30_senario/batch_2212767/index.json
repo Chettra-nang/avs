@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:14:54.498126",
+  "base_path": "batch_2212767",
+  "scenarios": {
+    "highway_merge_heavy": [
+      {
+        "transitions_file": "highway_merge_heavy/20251007_011453-ac7c1d5b_transitions.parquet",
+        "metadata_file": "highway_merge_heavy/20251007_011453-ac7c1d5b_meta.jsonl",
+        "created": "2025-10-07T01:14:54.498100"
+      }
+    ],
+    "highway_speed_variation": [
+      {
+        "transitions_file": "highway_speed_variation/20251007_011454-e81be2b8_transitions.parquet",
+        "metadata_file": "highway_speed_variation/20251007_011454-e81be2b8_meta.jsonl",
+        "created": "2025-10-07T01:14:54.498124"
+      }
+    ]
+  },
+  "total_files": 2
+}

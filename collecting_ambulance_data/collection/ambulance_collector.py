@@ -10,11 +10,13 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 import time
+import numpy as np
 
 from highway_datacollection.collection.collector import SynchronizedCollector
 from highway_datacollection.collection.types import CollectionResult, EpisodeData
-from highway_datacollection.collection.action_samplers import ActionSampler, RandomActionSampler
+from highway_datacollection.collection.action_samplers import ActionSampler, HighwayActionSampler
 from highway_datacollection.collection.modality_config import ModalityConfigManager
+from highway_datacollection.collection.error_handling import EnvironmentSynchronizationError
 from highway_datacollection.storage.manager import DatasetStorageManager
 from highway_datacollection.environments.factory import MultiAgentEnvFactory
 from highway_datacollection.performance import PerformanceConfig
@@ -52,13 +54,17 @@ class AmbulanceDataCollector:
         
         Args:
             n_agents: Number of controlled agents (first agent will be ambulance)
-            action_sampler: Action sampling strategy (defaults to RandomActionSampler)
+            action_sampler: Action sampling strategy (defaults to HighwayActionSampler for realistic driving)
             modality_config_manager: Manager for modality configurations
             max_memory_gb: Maximum memory usage allowed in GB
             enable_validation: Whether to enable validation checks
             performance_config: Performance optimization configuration
         """
         self.n_agents = n_agents
+        
+        # Use HighwayActionSampler by default for realistic ambulance driving patterns
+        if action_sampler is None:
+            action_sampler = HighwayActionSampler(highway_bias=0.6)  # Moderate highway bias
         
         # Initialize the underlying synchronized collector
         self._collector = SynchronizedCollector(
@@ -88,7 +94,7 @@ class AmbulanceDataCollector:
         
         logger.info(f"Initialized AmbulanceDataCollector with {n_agents} agents")
         logger.info(f"Available ambulance scenarios: {len(self._scenario_names)}")
-        logger.info(f"Action sampler: {type(self._collector._action_sampler).__name__}")
+        logger.info(f"Action sampler: {type(self._collector._action_sampler).__name__} (highway-biased for realistic driving)")
     
     def setup_ambulance_environments(self, scenario_name: str) -> Dict[str, Any]:
         """
@@ -540,6 +546,268 @@ class AmbulanceDataCollector:
         logger.info("Cleaning up ambulance data collector")
         self._collector._cleanup_environments()
         logger.info("Ambulance data collector cleanup completed")
+    
+    def _should_terminate_ambulance_episode(self, terminated: Any, truncated: Any) -> bool:
+        """
+        Check if episode should terminate based on ambulance-specific logic.
+        
+        For ambulance scenarios, episode should only terminate when the ambulance
+        (first agent, index 0) crashes, not when other agents crash.
+        
+        Args:
+            terminated: Termination signal from environment (bool or array)
+            truncated: Truncation signal from environment (bool or array)
+            
+        Returns:
+            True if episode should terminate, False otherwise
+        """
+        # Handle arrays for multi-agent environments
+        if isinstance(terminated, np.ndarray):
+            # Only terminate if ambulance (agent 0) has terminated
+            ambulance_terminated = terminated[0] if len(terminated) > 0 else False
+            truncated_any = truncated.any() if hasattr(truncated, 'any') else truncated
+        else:
+            # Single agent case (fallback)
+            ambulance_terminated = terminated
+            truncated_any = truncated
+        
+        # Episode terminates if ambulance crashes OR if truncated (max steps reached)
+        return ambulance_terminated or truncated_any
+    
+    def collect_single_episode(self, scenario_name: str, seed: int, max_steps: int, 
+                              episode_idx: int) -> EpisodeData:
+        """
+        Collect data from a single ambulance episode with ambulance-specific termination logic.
+        
+        This overrides the base collector to implement ambulance-specific termination
+        where episodes only end when the ambulance crashes, not when other agents crash.
+        
+        Args:
+            scenario_name: Name of the scenario
+            seed: Random seed for this episode
+            max_steps: Maximum steps for this episode
+            episode_idx: Index of this episode in the batch
+            
+        Returns:
+            EpisodeData containing all collected information
+        """
+        from highway_datacollection.features.engine import FeatureDerivationEngine
+        from highway_datacollection.storage.manager import DatasetStorageManager
+        import numpy as np
+        
+        # Initialize feature engine
+        feature_engine = FeatureDerivationEngine()
+        
+        # Generate unique episode ID
+        episode_id = f"ambulance_ep_{scenario_name}_{seed}_{episode_idx:04d}"
+        
+        # Reset environments
+        initial_observations = self._collector.reset_parallel_envs(seed)
+        
+        # Initialize episode data storage
+        episode_observations = []
+        episode_actions = []
+        episode_rewards = []
+        episode_dones = []
+        episode_infos = []
+        
+        # Episode loop with ambulance-specific termination
+        step = 0
+        done = False
+        
+        while step < max_steps and not done:
+            # Process current observations and derive features
+            processed_obs = self._collector._process_observations(
+                initial_observations if step == 0 else step_results,
+                feature_engine,
+                episode_id,
+                step
+            )
+            
+            episode_observations.append(processed_obs)
+            
+            # Sample actions
+            actions = self._collector.sample_actions(
+                initial_observations if step == 0 else step_results, 
+                step, 
+                episode_id
+            )
+            episode_actions.append(actions)
+            
+            # Step environments
+            step_results = self._collector.step_parallel_envs(actions)
+            
+            # Verify synchronization
+            try:
+                if not self._collector.verify_synchronization(step_results):
+                    raise EnvironmentSynchronizationError(
+                        f"Environment desynchronization detected at step {step}",
+                        {"step": step, "episode_id": episode_id}
+                    )
+            except EnvironmentSynchronizationError:
+                raise  # Re-raise synchronization errors
+            except Exception as e:
+                logger.error(f"Synchronization verification failed: {e}")
+                raise EnvironmentSynchronizationError(
+                    f"Synchronization verification error at step {step}: {str(e)}"
+                )
+            
+            # Extract step information
+            first_result = next(iter(step_results.values()))
+            reward = first_result['reward']
+            terminated = first_result['terminated']
+            truncated = first_result['truncated']
+            info = first_result['info']
+            
+            # Use ambulance-specific termination logic
+            episode_done = self._should_terminate_ambulance_episode(terminated, truncated)
+            
+            episode_rewards.append(reward)
+            episode_dones.append(episode_done)
+            episode_infos.append(info)
+            
+            # Check termination
+            done = episode_done
+            step += 1
+            self._collector.collection_stats["steps_collected"] += 1
+        
+        # Create episode metadata
+        metadata = {
+            'episode_id': episode_id,
+            'scenario': scenario_name,
+            'config': self._env_factory.get_base_config(scenario_name, self._collector._n_agents),
+            'modalities': list(self._collector._obs_types),
+            'n_agents': self._collector._n_agents,
+            'total_steps': step,
+            'seed': seed,
+            'max_steps': max_steps,
+            'terminated_early': done and step < max_steps,
+            'ambulance_specific_termination': True,
+            'termination_reason': 'ambulance_crash' if done and step < max_steps else 'max_steps'
+        }
+        
+        return EpisodeData(
+            episode_id=episode_id,
+            scenario=scenario_name,
+            observations=episode_observations,
+            actions=episode_actions,
+            rewards=episode_rewards,
+            dones=episode_dones,
+            infos=episode_infos,
+            metadata=metadata
+        )
+    
+    def collect_episode_batch(self, scenario_name: str, episodes: int, seed: int, 
+                             max_steps: int = 100, batch_size: Optional[int] = None) -> CollectionResult:
+        """
+        Collect a batch of ambulance episodes using ambulance-specific termination logic.
+        
+        This overrides the base collector to use ambulance-specific episode collection
+        where episodes only terminate when the ambulance crashes.
+        
+        Args:
+            scenario_name: Name of the ambulance scenario to collect data for
+            episodes: Number of episodes to collect
+            seed: Random seed for reproducibility
+            max_steps: Maximum steps per episode
+            batch_size: Optional batch size override
+            
+        Returns:
+            CollectionResult containing episode data and metadata
+        """
+        import time
+        import gc
+        from highway_datacollection.collection.error_handling import ErrorContext, MemoryError, EnvironmentSynchronizationError
+        
+        # Validate that this is an ambulance scenario
+        if scenario_name not in self._scenario_names:
+            raise ValueError(f"Unknown ambulance scenario: {scenario_name}. "
+                           f"Available scenarios: {self._scenario_names}")
+        
+        context = ErrorContext(
+            operation="collect_episode_batch",
+            component="AmbulanceDataCollector",
+            scenario=scenario_name,
+            additional_info={"episodes": episodes, "max_steps": max_steps}
+        )
+        
+        logger.info(f"Starting ambulance episode collection: {episodes} episodes for scenario '{scenario_name}'")
+        
+        # Setup environments for ambulance scenario
+        try:
+            self.setup_ambulance_environments(scenario_name)
+        except Exception as e:
+            error_info = self._collector.error_handler.handle_error(e, context)
+            if not error_info["recovery_successful"]:
+                raise
+        
+        collected_episodes = []
+        collection_errors = []
+        successful_episodes = 0
+        
+        start_time = time.time()
+        
+        # Determine batch size (simplified for ambulance collection)
+        if batch_size is None:
+            batch_size = min(10, episodes)  # Smaller batches for ambulance scenarios
+        
+        logger.info(f"Using batch size: {batch_size} for ambulance collection")
+        
+        # Process episodes in batches
+        for batch_start in range(0, episodes, batch_size):
+            batch_end = min(batch_start + batch_size, episodes)
+            batch_episodes = batch_end - batch_start
+            
+            logger.debug(f"Processing ambulance batch {batch_start//batch_size + 1}: episodes {batch_start+1}-{batch_end}")
+            
+            batch_successful = 0
+            batch_errors = []
+            
+            for episode_idx in range(batch_start, batch_end):
+                episode_seed = seed + episode_idx
+                logger.debug(f"Collecting ambulance episode {episode_idx + 1}/{episodes} with seed {episode_seed}")
+                
+                try:
+                    # Use ambulance-specific episode collection
+                    episode_data = self.collect_single_episode(
+                        scenario_name, episode_seed, max_steps, episode_idx
+                    )
+                    collected_episodes.append(episode_data)
+                    batch_successful += 1
+                    successful_episodes += 1
+                    self._collector.collection_stats["episodes_collected"] += 1
+                    
+                except Exception as e:
+                    error_msg = f"Ambulance episode {episode_idx + 1} failed: {str(e)}"
+                    logger.error(error_msg)
+                    collection_errors.append(error_msg)
+                    batch_errors.append(error_msg)
+                    
+                    # Handle critical errors
+                    if isinstance(e, (EnvironmentSynchronizationError, MemoryError)):
+                        logger.error("Critical error in ambulance collection, stopping batch")
+                        break
+            
+            # Trigger garbage collection periodically
+            if batch_start % (batch_size * 5) == 0:
+                gc.collect()
+        
+        collection_time = time.time() - start_time
+        
+        # Create collection result
+        result = CollectionResult(
+            episodes=collected_episodes,
+            total_episodes=episodes,
+            successful_episodes=successful_episodes,
+            failed_episodes=episodes - successful_episodes,
+            collection_time=collection_time,
+            errors=collection_errors
+        )
+        
+        logger.info(f"Ambulance collection completed: {successful_episodes}/{episodes} episodes successful "
+                   f"in {collection_time:.2f}s")
+        
+        return result
     
     def __enter__(self):
         """Context manager entry."""

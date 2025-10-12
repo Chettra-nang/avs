@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:19:32.690473",
+  "base_path": "batch_2212768",
+  "scenarios": {
+    "highway_rush_hour": [
+      {
+        "transitions_file": "highway_rush_hour/20251007_011932-88adade2_transitions.parquet",
+        "metadata_file": "highway_rush_hour/20251007_011932-88adade2_meta.jsonl",
+        "created": "2025-10-07T01:19:32.690449"
+      }
+    ],
+    "highway_accident_scene": [
+      {
+        "transitions_file": "highway_accident_scene/20251007_011932-eaaf60af_transitions.parquet",
+        "metadata_file": "highway_accident_scene/20251007_011932-eaaf60af_meta.jsonl",
+        "created": "2025-10-07T01:19:32.690472"
+      }
+    ]
+  },
+  "total_files": 2
+}

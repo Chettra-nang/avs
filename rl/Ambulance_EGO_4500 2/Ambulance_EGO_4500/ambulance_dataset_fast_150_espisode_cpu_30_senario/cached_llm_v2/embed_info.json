@@ -1,0 +1,10 @@
+{
+  "provider": "local",
+  "dim": 384,
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "device": "mps",
+  "parquet_compression": "zstd",
+  "batch_size": 128,
+  "sqlite": true,
+  "caption_strategy": "keep_all"
+}

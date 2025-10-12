@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:15:47.989416",
+  "base_path": "batch_2212756",
+  "scenarios": {
+    "highway_construction": [
+      {
+        "transitions_file": "highway_construction/20251007_011547-91e99ee4_transitions.parquet",
+        "metadata_file": "highway_construction/20251007_011547-91e99ee4_meta.jsonl",
+        "created": "2025-10-07T01:15:47.989394"
+      }
+    ],
+    "highway_weather_conditions": [
+      {
+        "transitions_file": "highway_weather_conditions/20251007_011547-b2959ed1_transitions.parquet",
+        "metadata_file": "highway_weather_conditions/20251007_011547-b2959ed1_meta.jsonl",
+        "created": "2025-10-07T01:15:47.989414"
+      }
+    ]
+  },
+  "total_files": 2
+}

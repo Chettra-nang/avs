@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:17:10.727165",
+  "base_path": "batch_2212764",
+  "scenarios": {
+    "highway_time_pressure": [
+      {
+        "transitions_file": "highway_time_pressure/20251007_011709-8dd292ea_transitions.parquet",
+        "metadata_file": "highway_time_pressure/20251007_011709-8dd292ea_meta.jsonl",
+        "created": "2025-10-07T01:17:10.727144"
+      }
+    ],
+    "roundabout_single_lane": [
+      {
+        "transitions_file": "roundabout_single_lane/20251007_011710-9b2de3f3_transitions.parquet",
+        "metadata_file": "roundabout_single_lane/20251007_011710-9b2de3f3_meta.jsonl",
+        "created": "2025-10-07T01:17:10.727164"
+      }
+    ]
+  },
+  "total_files": 2
+}

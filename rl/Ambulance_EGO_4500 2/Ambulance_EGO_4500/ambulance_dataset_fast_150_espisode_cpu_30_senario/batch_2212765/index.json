@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:18:24.937968",
+  "base_path": "batch_2212765",
+  "scenarios": {
+    "merge_multi_point": [
+      {
+        "transitions_file": "merge_multi_point/20251007_011824-f4506cd0_transitions.parquet",
+        "metadata_file": "merge_multi_point/20251007_011824-f4506cd0_meta.jsonl",
+        "created": "2025-10-07T01:18:24.937950"
+      }
+    ],
+    "urban_mixed_complex": [
+      {
+        "transitions_file": "urban_mixed_complex/20251007_011824-518d8313_transitions.parquet",
+        "metadata_file": "urban_mixed_complex/20251007_011824-518d8313_meta.jsonl",
+        "created": "2025-10-07T01:18:24.937966"
+      }
+    ]
+  },
+  "total_files": 2
+}

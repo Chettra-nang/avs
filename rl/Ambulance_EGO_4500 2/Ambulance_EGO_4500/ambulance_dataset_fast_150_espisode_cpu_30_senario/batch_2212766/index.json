@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:19:10.339949",
+  "base_path": "batch_2212766",
+  "scenarios": {
+    "highway_shoulder_use": [
+      {
+        "transitions_file": "highway_shoulder_use/20251007_011909-869dc060_transitions.parquet",
+        "metadata_file": "highway_shoulder_use/20251007_011909-869dc060_meta.jsonl",
+        "created": "2025-10-07T01:19:10.339927"
+      }
+    ],
+    "highway_truck_heavy": [
+      {
+        "transitions_file": "highway_truck_heavy/20251007_011909-6897bedb_transitions.parquet",
+        "metadata_file": "highway_truck_heavy/20251007_011909-6897bedb_meta.jsonl",
+        "created": "2025-10-07T01:19:10.339947"
+      }
+    ]
+  },
+  "total_files": 2
+}

@@ -1,0 +1,144 @@
+{
+  "collection_info": {
+    "total_batches": 15,
+    "collection_timestamp": 1759774773.9349952,
+    "total_episodes": 4345
+  },
+  "batches": [
+    {
+      "worker_id": 2212759,
+      "scenarios": [
+        "highway_emergency_light",
+        "highway_emergency_moderate"
+      ],
+      "episodes": 150,
+      "storage_path": "batch_2212759"
+    },
+    {
+      "worker_id": 2212762,
+      "scenarios": [
+        "corner_sharp_turn",
+        "intersection_t_junction"
+      ],
+      "episodes": 299,
+      "storage_path": "batch_2212762"
+    },
+    {
+      "worker_id": 2212765,
+      "scenarios": [
+        "intersection_four_way",
+        "corner_blind_curve"
+      ],
+      "episodes": 299,
+      "storage_path": "batch_2212765"
+    },
+    {
+      "worker_id": 2212759,
+      "scenarios": [
+        "corner_urban_crossing",
+        "merge_highway_entry"
+      ],
+      "episodes": 299,
+      "storage_path": "batch_2212759"
+    },
+    {
+      "worker_id": 2212762,
+      "scenarios": [
+        "merge_heavy_traffic",
+        "merge_zipper_pattern"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212762"
+    },
+    {
+      "worker_id": 2212767,
+      "scenarios": [
+        "highway_merge_heavy",
+        "highway_speed_variation"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212767"
+    },
+    {
+      "worker_id": 2212761,
+      "scenarios": [
+        "highway_emergency_dense",
+        "highway_lane_closure"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212761"
+    },
+    {
+      "worker_id": 2212756,
+      "scenarios": [
+        "highway_construction",
+        "highway_weather_conditions"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212756"
+    },
+    {
+      "worker_id": 2212763,
+      "scenarios": [
+        "roundabout_multi_lane",
+        "roundabout_congested"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212763"
+    },
+    {
+      "worker_id": 2212764,
+      "scenarios": [
+        "highway_time_pressure",
+        "roundabout_single_lane"
+      ],
+      "episodes": 299,
+      "storage_path": "batch_2212764"
+    },
+    {
+      "worker_id": 2212759,
+      "scenarios": [
+        "transition_highway_urban",
+        "night_emergency_response"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212759"
+    },
+    {
+      "worker_id": 2212765,
+      "scenarios": [
+        "merge_multi_point",
+        "urban_mixed_complex"
+      ],
+      "episodes": 299,
+      "storage_path": "batch_2212765"
+    },
+    {
+      "worker_id": 2212760,
+      "scenarios": [
+        "highway_stop_and_go",
+        "highway_aggressive_drivers"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212760"
+    },
+    {
+      "worker_id": 2212766,
+      "scenarios": [
+        "highway_shoulder_use",
+        "highway_truck_heavy"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212766"
+    },
+    {
+      "worker_id": 2212768,
+      "scenarios": [
+        "highway_rush_hour",
+        "highway_accident_scene"
+      ],
+      "episodes": 300,
+      "storage_path": "batch_2212768"
+    }
+  ]
+}

@@ -327,3 +327,84 @@ class HybridActionSampler(ActionSampler):
             Action sampler for the agent
         """
         return self._samplers.get(agent_idx, self._default_sampler)
+
+
+class HighwayActionSampler(ActionSampler):
+    """
+    Highway-aware action sampling strategy.
+    
+    Biases action sampling toward highway-appropriate behaviors:
+    - IDLE is most common (lane keeping)
+    - Lane changes are moderately common
+    - Speed changes are least common
+    
+    This creates more realistic driving patterns for data collection.
+    """
+    
+    def __init__(self, highway_bias: float = 0.7, seed: Optional[int] = None):
+        """
+        Initialize highway action sampler.
+        
+        Args:
+            highway_bias: Strength of bias toward highway-appropriate actions (0.0-1.0)
+                         Higher values make IDLE more dominant
+            seed: Initial random seed
+        """
+        # Highway action weights: [IDLE, LEFT, RIGHT, FASTER, SLOWER]
+        # IDLE should be most common, lane changes moderate, speed changes rare
+        self._base_weights = np.array([0.5, 0.15, 0.15, 0.125, 0.125])
+        
+        # Apply highway bias to make IDLE even more dominant
+        self._highway_bias = highway_bias
+        self._weights = self._base_weights.copy()
+        self._weights[0] *= (1.0 + highway_bias)  # Boost IDLE
+        # Reduce others proportionally
+        others_factor = (1.0 - highway_bias * 0.3)  # Don't reduce others too much
+        self._weights[1:] *= others_factor
+        # Renormalize
+        self._weights /= self._weights.sum()
+        
+        self._rng = np.random.Generator(np.random.PCG64())
+        if seed is not None:
+            self.reset(seed)
+        
+        logger.info(f"Initialized HighwayActionSampler with bias {highway_bias}")
+        logger.info(f"Action weights: IDLE={self._weights[0]:.3f}, LEFT={self._weights[1]:.3f}, "
+                   f"RIGHT={self._weights[2]:.3f}, FASTER={self._weights[3]:.3f}, SLOWER={self._weights[4]:.3f}")
+    
+    def sample_actions(self, observations: Dict[str, Any], n_agents: int, 
+                      step: int = 0, episode_id: str = "") -> Tuple[int, ...]:
+        """
+        Sample highway-biased actions for all agents.
+        
+        Args:
+            observations: Current observations (not used for biased random sampling)
+            n_agents: Number of agents to sample actions for
+            step: Current step (not used)
+            episode_id: Episode ID (not used)
+            
+        Returns:
+            Tuple of highway-biased actions for each agent
+        """
+        actions = tuple(
+            int(self._rng.choice(5, p=self._weights))  # Sample from weighted distribution
+            for _ in range(n_agents)
+        )
+        
+        logger.debug(f"Sampled highway actions: {actions}")
+        return actions
+    
+    def reset(self, seed: Optional[int] = None) -> None:
+        """
+        Reset the random number generator.
+        
+        Args:
+            seed: Random seed for deterministic behavior
+        """
+        if seed is not None:
+            self._rng = np.random.Generator(np.random.PCG64(seed + 2000))  # Different offset than RandomActionSampler
+            logger.debug(f"Reset HighwayActionSampler with seed {seed}")
+    
+    def get_action_space_size(self) -> int:
+        """Get the action space size."""
+        return 5

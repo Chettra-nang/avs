@@ -59,9 +59,17 @@ class GrayscaleImageExtractor:
         Returns:
             Decoded numpy array
         """
-        # Convert blob back to numpy array
-        array = np.frombuffer(blob, dtype=dtype)
-        return array.reshape(shape)
+        # Convert blob back to numpy array. Try np.load first (handles np.save
+        # written blobs), otherwise fall back to frombuffer raw decoding.
+        import io
+        try:
+            buf = io.BytesIO(blob)
+            arr = np.load(buf, allow_pickle=False)
+            arr = np.asarray(arr)
+        except Exception:
+            arr = np.frombuffer(blob, dtype=dtype)
+
+        return arr.reshape(shape)
     
     def process_grayscale_image(self, grayscale_array: np.ndarray) -> np.ndarray:
         """

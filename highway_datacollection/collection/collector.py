@@ -960,34 +960,47 @@ class SynchronizedCollector:
             kin_array.flatten().tolist() if len(kin_array.shape) > 1 else kin_array.tolist()
         )
         
-        # Extract features if enabled
-        if config.feature_extraction_enabled:
-            if len(kin_array.shape) == 2 and kin_array.shape[0] > 0:
-                # Multi-vehicle observation format
-                ego_vehicle = kin_array[0]  # First vehicle is ego
-                other_vehicles = kin_array[1:] if len(kin_array) > 1 else np.array([])
-                
-                # Extract features
-                try:
-                    kinematics_features = feature_engine.derive_kinematics_features(kin_array)
-                    ttc = feature_engine.calculate_ttc(ego_vehicle, other_vehicles)
-                    summary = feature_engine.generate_language_summary(ego_vehicle, other_vehicles)
-                    traffic_metrics = feature_engine.estimate_traffic_metrics(kin_array)
+        # Check if observation has already been processed by KinematicsProcessor
+        # If it has processed fields like 'speed', 'ego_vx', etc., don't re-process
+        already_processed = (
+            isinstance(observation, dict) and 
+            'speed' in observation and 
+            'ego_vx' in observation
+        )
+        
+        if already_processed:
+            # Data has already been processed by KinematicsProcessor, just copy the fields
+            processed_obs.update(observation)
+            # The summary_text should already be included from the processor
+        else:
+            # Extract features using feature engine (legacy path for raw observations)
+            if config.feature_extraction_enabled:
+                if len(kin_array.shape) == 2 and kin_array.shape[0] > 0:
+                    # Multi-vehicle observation format
+                    ego_vehicle = kin_array[0]  # First vehicle is ego
+                    other_vehicles = kin_array[1:] if len(kin_array) > 1 else np.array([])
                     
-                    # Add derived features
-                    processed_obs['ttc'] = ttc
-                    processed_obs['summary_text'] = summary
-                    processed_obs.update(kinematics_features)
-                    processed_obs.update(traffic_metrics)
-                    
-                except Exception as e:
-                    logger.warning(f"Feature extraction failed for kinematics: {e}")
+                    # Extract features
+                    try:
+                        kinematics_features = feature_engine.derive_kinematics_features(kin_array)
+                        ttc = feature_engine.calculate_ttc(ego_vehicle, other_vehicles)
+                        summary = feature_engine.generate_language_summary(ego_vehicle, other_vehicles)
+                        traffic_metrics = feature_engine.estimate_traffic_metrics(kin_array)
+                        
+                        # Add derived features
+                        processed_obs['ttc'] = ttc
+                        processed_obs['summary_text'] = summary
+                        processed_obs.update(kinematics_features)
+                        processed_obs.update(traffic_metrics)
+                        
+                    except Exception as e:
+                        logger.warning(f"Feature extraction failed for kinematics: {e}")
+                        processed_obs['ttc'] = float('inf')
+                        processed_obs['summary_text'] = "Feature extraction failed"
+                else:
+                    # Fallback for unexpected observation format
                     processed_obs['ttc'] = float('inf')
-                    processed_obs['summary_text'] = "Feature extraction failed"
-            else:
-                # Fallback for unexpected observation format
-                processed_obs['ttc'] = float('inf')
-                processed_obs['summary_text'] = "Unable to process observation"
+                    processed_obs['summary_text'] = "Unable to process observation"
     
     def _process_binary_observation(self, observation: Any, processed_obs: Dict[str, Any],
                                   modality: str, config: ModalityConfig) -> None:
@@ -1010,6 +1023,20 @@ class SynchronizedCollector:
                     'occupancy_dtype': binary_data['dtype']
                 })
             elif modality == 'GrayscaleObservation':
+                # Normalise grayscale ordering to (C, H, W).
+                # Upstream (highway-env) historically uses (C, W, H) (channels x width x height)
+                # which is confusing and can cause width/height to be swapped when
+                # visualising. Convert to (C, H, W) to be consistent across the pipeline.
+                try:
+                    if isinstance(obs_array, np.ndarray) and obs_array.ndim == 3:
+                        # If second and third dims differ and look like (W, H), swap them.
+                        if obs_array.shape[1] != obs_array.shape[2]:
+                            obs_array = np.transpose(obs_array, (0, 2, 1))
+                            logger.debug("Transposed GrayscaleObservation from (C,W,H) to (C,H,W) before encoding")
+                except Exception:
+                    # If anything goes wrong, continue with original array (best-effort)
+                    logger.exception("Failed to normalise GrayscaleObservation axis ordering")
+
                 binary_data = encoder.encode_single(obs_array)
                 processed_obs.update({
                     'grayscale_blob': binary_data['blob'],

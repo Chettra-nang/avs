@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:18:34.067362",
+  "base_path": "batch_2212760",
+  "scenarios": {
+    "highway_stop_and_go": [
+      {
+        "transitions_file": "highway_stop_and_go/20251007_011833-dcaf83fd_transitions.parquet",
+        "metadata_file": "highway_stop_and_go/20251007_011833-dcaf83fd_meta.jsonl",
+        "created": "2025-10-07T01:18:34.067342"
+      }
+    ],
+    "highway_aggressive_drivers": [
+      {
+        "transitions_file": "highway_aggressive_drivers/20251007_011833-2e233631_transitions.parquet",
+        "metadata_file": "highway_aggressive_drivers/20251007_011833-2e233631_meta.jsonl",
+        "created": "2025-10-07T01:18:34.067361"
+      }
+    ]
+  },
+  "total_files": 2
+}

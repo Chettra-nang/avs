@@ -1,0 +1,22 @@
+{
+  "dataset_name": "highway_multimodal_datacollection",
+  "created": "2025-10-07T01:15:19.564944",
+  "base_path": "batch_2212761",
+  "scenarios": {
+    "highway_emergency_dense": [
+      {
+        "transitions_file": "highway_emergency_dense/20251007_011518-29ff6dc7_transitions.parquet",
+        "metadata_file": "highway_emergency_dense/20251007_011518-29ff6dc7_meta.jsonl",
+        "created": "2025-10-07T01:15:19.564917"
+      }
+    ],
+    "highway_lane_closure": [
+      {
+        "transitions_file": "highway_lane_closure/20251007_011519-7611ea25_transitions.parquet",
+        "metadata_file": "highway_lane_closure/20251007_011519-7611ea25_meta.jsonl",
+        "created": "2025-10-07T01:15:19.564942"
+      }
+    ]
+  },
+  "total_files": 2
+}

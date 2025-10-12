@@ -25,7 +25,7 @@ OBSERVATION_CONFIGS = {
             "vx": [-20, 20],
             "vy": [-20, 20]
         },
-        "absolute": False,
+        "absolute": True,  # Use absolute velocities instead of normalized
         "flatten": False,
         "observe_intentions": False
     },

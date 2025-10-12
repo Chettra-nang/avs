@@ -12,7 +12,7 @@
 
 Added automatic environment selection:
 - `roundabout_*` scenarios → use `roundabout-v0` (circular roads)
-- `intersection_*` and `corner_*` scenarios → use `intersection-v0` (crossing roads)
+- `intersection_*` and `corner_*` scenarios → use `intersection-v1` (crossing roads)
 - `merge_*` scenarios → use `merge-v0` (merging lanes)
 - `highway_*` scenarios → use `highway-v0` (straight roads)
 
@@ -29,7 +29,7 @@ Expected output:
 ✅ Data collection will use:
    - highway-v0 for highway scenarios (straight roads)
    - roundabout-v0 for roundabout scenarios (circular roads)  
-   - intersection-v0 for corner/intersection scenarios (crossing roads)
+   - intersection-v1 for corner/intersection scenarios (crossing roads)
    - merge-v0 for merge scenarios (merging lanes)
 ```
 
@@ -48,7 +48,7 @@ python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
 This will collect:
 - ✅ 15 highway scenarios with straight roads
 - ✅ 3 roundabout scenarios with circular roads ⭕
-- ✅ 7 intersection/corner scenarios with crossing roads 🌐
+- ✅ 7 intersection/corner scenarios with crossing roads 🌐 (using intersection-v1)
 - ✅ 5 merge scenarios with merging lanes 🛣️
 
 **Total: 30,000 episodes with genuine road diversity!** 🚀

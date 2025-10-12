@@ -7,7 +7,7 @@ per scenario and custom observation processors through a plugin architecture.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Set, Callable, Union
+from typing import Dict, Any, List, Optional, Set, Callable, Union, Tuple
 from dataclasses import dataclass, field
 import logging
 import numpy as np
@@ -100,23 +100,464 @@ class ObservationProcessor(ABC):
 
 
 class KinematicsProcessor(ObservationProcessor):
-    """Default processor for Kinematics observations."""
-    
+    """Processor for Kinematics observations with multi-agent support."""
+
+    def __init__(self, n_agents: int = 1, extract_per_agent: bool = True):
+        """
+        Initialize kinematics processor.
+
+        Args:
+            n_agents: Number of agents (for multi-agent scenarios)
+            extract_per_agent: Whether to extract features per agent
+        """
+        self.n_agents = n_agents
+        self.extract_per_agent = extract_per_agent
+        
+        # Initialize language summarizer for generating natural language descriptions
+        from ..features.summarizer import LanguageSummarizer
+        self.summarizer = LanguageSummarizer()
+
     def process_observation(self, observation: Any, metadata: Dict[str, Any]) -> Any:
-        """Process kinematics observation (pass-through by default)."""
-        return observation
-    
+        """
+        Process kinematics observation with proper multi-agent handling.
+
+        In multi-agent mode, observation is a tuple of arrays (one per agent).
+        Each agent's observation contains kinematic features for all vehicles.
+        """
+        if isinstance(observation, tuple) and len(observation) > 1:
+            # Multi-agent observation: tuple of arrays
+            return self._process_multi_agent_kinematics(observation, metadata)
+        else:
+            # Single-agent observation: single array
+            return self._process_single_agent_kinematics(observation, metadata)
+
+    def _process_multi_agent_kinematics(self, observation: Tuple[np.ndarray, ...],
+                                       metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process multi-agent kinematics observations.
+
+        Args:
+            observation: Tuple of kinematic arrays (one per agent)
+            metadata: Additional processing metadata
+
+        Returns:
+            Dictionary with processed kinematics for each agent
+        """
+        agent_kinematics = {}
+
+        for agent_idx, agent_obs in enumerate(observation):
+            try:
+                # Convert to numpy array if needed
+                agent_obs_array = np.array(agent_obs)
+                agent_kinematics[f'agent_{agent_idx}'] = self._extract_agent_kinematics(agent_obs_array, agent_idx, metadata)
+            except Exception as e:
+                logger.warning(f"Failed to process agent {agent_idx} kinematics: {e}")
+                agent_kinematics[f'agent_{agent_idx}'] = self._get_default_kinematics()
+
+        # Store raw observation for debugging (convert to list to avoid serialization issues)
+        try:
+            agent_kinematics['kinematics_raw'] = [np.array(obs).flatten().tolist() for obs in observation]
+        except Exception:
+            agent_kinematics['kinematics_raw'] = []
+
+        return agent_kinematics
+
+    def _process_single_agent_kinematics(self, observation: np.ndarray,
+                                        metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process single-agent kinematics observation.
+
+        Args:
+            observation: Kinematic array for single agent
+            metadata: Additional processing metadata
+
+        Returns:
+            Dictionary with processed kinematics
+        """
+        try:
+            # Convert to numpy array if needed
+            kinematics_array = np.array(observation)
+            kinematics = self._extract_agent_kinematics(kinematics_array, 0, metadata)
+            kinematics['kinematics_raw'] = kinematics_array.flatten().tolist()
+            return kinematics
+        except Exception as e:
+            logger.warning(f"Failed to process single agent kinematics: {e}")
+            default_kinematics = self._get_default_kinematics()
+            default_kinematics['kinematics_raw'] = []
+            return default_kinematics
+
+    def _extract_agent_kinematics(self, kinematics_array: np.ndarray, agent_index: int, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Extract kinematic features for a specific agent.
+
+        Highway-env kinematics format: [presence, x, y, vx, vy, cos_h, sin_h] per vehicle
+        Vehicles are ordered with controlled vehicles first.
+
+        Args:
+            kinematics_array: Raw kinematics array (can be 1D flattened or 2D)
+            agent_index: Index of the agent to extract features for
+
+        Returns:
+            Dictionary with extracted kinematic features
+        """
+        try:
+            # Handle both 1D and 2D input arrays
+            if kinematics_array.ndim == 1:
+                # 1D flattened array
+                n_vehicles = len(kinematics_array) // 7
+                kinematics_reshaped = kinematics_array.reshape(n_vehicles, 7)
+            elif kinematics_array.ndim == 2 and kinematics_array.shape[1] == 7:
+                # Already 2D with correct shape
+                kinematics_reshaped = kinematics_array
+                n_vehicles = kinematics_reshaped.shape[0]
+            else:
+                # Try to reshape if possible
+                kinematics_flat = kinematics_array.flatten()
+                n_vehicles = len(kinematics_flat) // 7
+                if n_vehicles > 0:
+                    kinematics_reshaped = kinematics_flat.reshape(n_vehicles, 7)
+                else:
+                    raise ValueError(f"Cannot reshape kinematics array of size {len(kinematics_flat)} into (n, 7) format")
+
+            # Extract features for the specified agent (controlled vehicle)
+            if agent_index < n_vehicles:
+                agent_features = kinematics_reshaped[agent_index]
+                presence, x, y, vx, vy, cos_h, sin_h = agent_features
+
+                # Calculate derived features
+                # Check if velocities are normalized (Highway-Env default) and de-normalize if needed
+                vx_real, vy_real = self._denormalize_velocities(vx, vy, kinematics_reshaped)
+                speed = np.sqrt(vx_real**2 + vy_real**2)
+                heading = np.arctan2(sin_h, cos_h)
+
+                # Calculate TTC (Time To Collision) with nearest vehicle ahead
+                ttc = self._calculate_ttc(kinematics_reshaped, agent_index)
+
+                # Calculate traffic density and other features
+                traffic_density = self._calculate_traffic_density(kinematics_reshaped)
+                min_ttc = self._calculate_min_ttc(kinematics_reshaped, agent_index)
+                average_speed, speed_variance = self._calculate_speed_stats(kinematics_reshaped)
+                lane_change_opportunities = self._calculate_lane_change_opportunities(kinematics_reshaped, agent_index)
+
+                return {
+                    'presence': float(presence),
+                    'ego_x': float(x),
+                    'ego_y': float(y),
+                    'ego_vx': float(vx_real),
+                    'ego_vy': float(vy_real),
+                    'speed': float(speed),
+                    'heading': float(heading),
+                    'cos_h': float(cos_h),
+                    'sin_h': float(sin_h),
+                    'lane_position': int(agent_index % 4),  # Assume 4 lanes
+                    'ttc': float(ttc) if np.isfinite(ttc) else float('inf'),
+                    'min_ttc': float(min_ttc) if np.isfinite(min_ttc) else float('inf'),
+                    'traffic_density': float(traffic_density),
+                    'vehicle_count': int(np.sum(kinematics_reshaped[:, 0])),  # Count present vehicles
+                    'average_speed': float(average_speed),
+                    'speed_variance': float(speed_variance),
+                    'lane_change_opportunities': int(lane_change_opportunities),
+                    'summary_text': self._generate_summary_text(kinematics_reshaped, agent_index, metadata)
+                }
+            else:
+                # Agent index out of bounds, return default values
+                return self._get_default_kinematics()
+
+        except Exception as e:
+            logger.warning(f"Failed to extract kinematics for agent {agent_index}: {e}")
+            return self._get_default_kinematics()
+
+    def _generate_summary_text(self, kinematics_reshaped: np.ndarray, agent_index: int, metadata: Dict[str, Any] = None) -> str:
+        """
+        Generate natural language summary of the driving context.
+        
+        Args:
+            kinematics_reshaped: Full kinematics array for all vehicles
+            agent_index: Index of the agent to summarize for
+            metadata: Additional metadata about the observation
+            
+        Returns:
+            Natural language description of the driving situation
+        """
+        try:
+            if agent_index >= len(kinematics_reshaped):
+                return "Unable to process observation - agent index out of bounds"
+            
+            # Extract ego vehicle state
+            ego_vehicle = kinematics_reshaped[agent_index].copy()  # Make a copy to avoid modifying original
+            
+            # De-normalize ego vehicle velocities before summarization
+            ego_vx, ego_vy = ego_vehicle[3:5]  # vx, vy from kinematics
+            ego_vx_real, ego_vy_real = self._denormalize_velocities(ego_vx, ego_vy, kinematics_reshaped)
+            ego_vehicle[3:5] = ego_vx_real, ego_vy_real  # Update with de-normalized velocities
+            
+            # Extract other vehicles (exclude ego)
+            other_vehicles = np.concatenate([
+                kinematics_reshaped[:agent_index],
+                kinematics_reshaped[agent_index + 1:]
+            ]) if len(kinematics_reshaped) > 1 else np.array([])
+            
+            # Filter to only present vehicles and de-normalize their velocities
+            if len(other_vehicles) > 0:
+                other_vehicles = other_vehicles[other_vehicles[:, 0] > 0]
+                # De-normalize velocities for all other vehicles
+                for i in range(len(other_vehicles)):
+                    vx, vy = other_vehicles[i, 3:5]
+                    vx_real, vy_real = self._denormalize_velocities(vx, vy, kinematics_reshaped)
+                    other_vehicles[i, 3:5] = vx_real, vy_real
+            
+            # Get scenario information from metadata
+            scenario_context = {}
+            if metadata:
+                scenario_name = metadata.get('scenario', 'default')
+                scenario_context['scenario'] = scenario_name
+            
+            # Generate summary using the language summarizer with de-normalized velocities
+            summary = self.summarizer.summarize(ego_vehicle, other_vehicles, scenario_context)
+            return summary
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate summary text: {e}")
+            return "Features extracted by KinematicsProcessor"
+
+    def _denormalize_velocities(self, vx: float, vy: float, kinematics_reshaped: np.ndarray) -> Tuple[float, float]:
+        """
+        De-normalize velocities if they appear to be normalized by Highway-Env.
+        
+        Highway-Env normalizes velocities by speed_limit when absolute=False.
+        We detect normalization by checking if max speeds are unrealistically low (< 2.0 m/s).
+        
+        Args:
+            vx, vy: Normalized velocities
+            kinematics_reshaped: Full kinematics array to estimate speed_limit
+            
+        Returns:
+            Tuple of (real_vx, real_vy) in m/s
+        """
+        # Calculate speeds for all vehicles to detect if normalized
+        all_speeds = []
+        for vehicle in kinematics_reshaped:
+            if vehicle[0] > 0:  # Vehicle present
+                v_x, v_y = vehicle[3:5]
+                all_speeds.append(np.sqrt(v_x**2 + v_y**2))
+        
+        if not all_speeds:
+            return vx, vy
+            
+        max_speed = max(all_speeds)
+        
+        # If max speed is unrealistically low (< 2 m/s), assume normalized
+        # Highway speeds should be 15-25 m/s, normalized would be 0-1
+        if max_speed < 2.0:
+            # Estimate speed_limit from scenario (typical highway speeds)
+            # This is a heuristic since we don't have access to the exact speed_limit
+            estimated_speed_limit = 20.0  # Conservative estimate for highway scenarios
+            vx_real = vx * estimated_speed_limit
+            vy_real = vy * estimated_speed_limit
+            logger.debug(f"De-normalizing velocities: vx {vx:.3f} -> {vx_real:.3f}, vy {vy:.3f} -> {vy_real:.3f} (max_speed={max_speed:.3f})")
+            return vx_real, vy_real
+        
+        # Already absolute velocities
+        logger.debug(f"Velocities already absolute: vx {vx:.3f}, vy {vy:.3f} (max_speed={max_speed:.3f})")
+        return vx, vy
+
+    def _get_default_kinematics(self) -> Dict[str, Any]:
+        """Return default kinematics values when extraction fails."""
+        return {
+            'presence': 0.0,
+            'ego_x': 0.0,
+            'ego_y': 0.0,
+            'ego_vx': 0.0,
+            'ego_vy': 0.0,
+            'speed': 0.0,
+            'heading': 0.0,
+            'cos_h': 1.0,
+            'sin_h': 0.0,
+            'lane_position': 0,
+            'ttc': float('inf'),
+            'min_ttc': float('inf'),
+            'traffic_density': 0.0,
+            'vehicle_count': 0,
+            'average_speed': 0.0,
+            'speed_variance': 0.0,
+            'lane_change_opportunities': 0,
+            'summary_text': 'Unable to process observation'
+        }
+
+    def _calculate_ttc(self, kinematics: np.ndarray, agent_index: int) -> float:
+        """Calculate Time To Collision with nearest vehicle ahead."""
+        try:
+            agent_x, agent_y = kinematics[agent_index, 1:3]
+            agent_vx, agent_vy = kinematics[agent_index, 3:5]
+
+            min_ttc = float('inf')
+
+            for i, vehicle in enumerate(kinematics):
+                if i == agent_index:
+                    continue
+
+                presence, x, y, vx, vy = vehicle[:5]
+                if presence <= 0:
+                    continue
+
+                # Check if vehicle is ahead (same lane, positive relative x)
+                if abs(y - agent_y) < 1.0:  # Same lane (within 1 unit)
+                    relative_x = x - agent_x
+                    relative_vx = vx - agent_vx
+
+                    if relative_x > 0 and relative_vx < 0:  # Vehicle ahead and approaching
+                        # TTC = relative_distance / relative_speed
+                        ttc = abs(relative_x) / abs(relative_vx)
+                        min_ttc = min(min_ttc, ttc)
+
+            return min_ttc if np.isfinite(min_ttc) else float('inf')
+
+        except Exception:
+            return float('inf')
+
+    def _calculate_min_ttc(self, kinematics: np.ndarray, agent_index: int) -> float:
+        """Calculate minimum TTC with any vehicle."""
+        try:
+            agent_x, agent_y = kinematics[agent_index, 1:3]
+            agent_vx, agent_vy = kinematics[agent_index, 3:5]
+
+            min_ttc = float('inf')
+
+            for i, vehicle in enumerate(kinematics):
+                if i == agent_index:
+                    continue
+
+                presence, x, y, vx, vy = vehicle[:5]
+                if presence <= 0:
+                    continue
+
+                # Calculate relative motion
+                relative_x = x - agent_x
+                relative_y = y - agent_y
+                relative_vx = vx - agent_vx
+                relative_vy = vy - agent_vy
+
+                # Simple TTC calculation (distance / relative speed)
+                distance = np.sqrt(relative_x**2 + relative_y**2)
+                relative_speed = np.sqrt(relative_vx**2 + relative_vy**2)
+
+                if relative_speed > 0.1:  # Avoid division by very small numbers
+                    ttc = distance / relative_speed
+                    min_ttc = min(min_ttc, ttc)
+
+            return min_ttc if np.isfinite(min_ttc) else float('inf')
+
+        except Exception:
+            return float('inf')
+
+    def _calculate_traffic_density(self, kinematics: np.ndarray) -> float:
+        """Calculate traffic density (vehicles per unit area)."""
+        try:
+            present_vehicles = kinematics[kinematics[:, 0] > 0]
+            if len(present_vehicles) <= 1:
+                return 0.0
+
+            # Calculate spread in x and y directions
+            x_spread = np.ptp(present_vehicles[:, 1])  # Peak-to-peak in x
+            y_spread = np.ptp(present_vehicles[:, 2])  # Peak-to-peak in y
+
+            area = max(x_spread * y_spread, 1.0)  # Avoid division by zero
+            return len(present_vehicles) / area
+
+        except Exception:
+            return 0.0
+
+    def _calculate_speed_stats(self, kinematics: np.ndarray) -> Tuple[float, float]:
+        """Calculate average speed and speed variance."""
+        try:
+            present_vehicles = kinematics[kinematics[:, 0] > 0]
+            if len(present_vehicles) == 0:
+                return 0.0, 0.0
+
+            speeds = np.sqrt(present_vehicles[:, 3]**2 + present_vehicles[:, 4]**2)
+            return float(np.mean(speeds)), float(np.var(speeds))
+
+        except Exception:
+            return 0.0, 0.0
+
+    def _calculate_lane_change_opportunities(self, kinematics: np.ndarray, agent_index: int) -> int:
+        """Calculate number of lane change opportunities."""
+        try:
+            agent_y = kinematics[agent_index, 2]
+            opportunities = 0
+
+            # Check adjacent lanes (simplified - assume 4 lanes)
+            for lane_offset in [-1, 1]:
+                target_lane = agent_y + lane_offset * 3.5  # Assume 3.5m lane width
+
+                # Check if lane is clear (no vehicles within 10m ahead/behind)
+                clear = True
+                for i, vehicle in enumerate(kinematics):
+                    if i == agent_index:
+                        continue
+
+                    presence, x, y, vx, vy = vehicle[:5]
+                    if presence <= 0:
+                        continue
+
+                    if abs(y - target_lane) < 1.0:  # Vehicle in target lane
+                        agent_x = kinematics[agent_index, 1]
+                        if abs(x - agent_x) < 10.0:  # Within 10m
+                            clear = False
+                            break
+
+                if clear:
+                    opportunities += 1
+
+            return opportunities
+
+        except Exception:
+            return 0
+
+    def _get_default_kinematics(self) -> Dict[str, Any]:
+        """Get default kinematics values for error cases."""
+        return {
+            'presence': 0.0,
+            'ego_x': 0.0,
+            'ego_y': 0.0,
+            'ego_vx': 0.0,
+            'ego_vy': 0.0,
+            'speed': 0.0,
+            'heading': 0.0,
+            'cos_h': 1.0,
+            'sin_h': 0.0,
+            'lane_position': 0,
+            'ttc': float('inf'),
+            'min_ttc': float('inf'),
+            'traffic_density': 0.0,
+            'vehicle_count': 0,
+            'average_speed': 0.0,
+            'speed_variance': 0.0,
+            'lane_change_opportunities': 0
+        }
+
     def get_output_schema(self) -> Dict[str, type]:
         """Get output schema for kinematics data."""
         return {
             'kinematics_raw': list,
             'presence': float,
-            'x': float,
-            'y': float,
-            'vx': float,
-            'vy': float,
+            'ego_x': float,
+            'ego_y': float,
+            'ego_vx': float,
+            'ego_vy': float,
+            'speed': float,
+            'heading': float,
             'cos_h': float,
-            'sin_h': float
+            'sin_h': float,
+            'lane_position': int,
+            'ttc': float,
+            'min_ttc': float,
+            'traffic_density': float,
+            'vehicle_count': int,
+            'average_speed': float,
+            'speed_variance': float,
+            'lane_change_opportunities': int,
+            'summary_text': str
         }
 
 
@@ -225,7 +666,8 @@ class ModalityConfigManager:
     
     def _register_default_processors(self) -> None:
         """Register default observation processors."""
-        self._processor_registry['Kinematics'] = KinematicsProcessor()
+        # Use multi-agent aware kinematics processor by default
+        self._processor_registry['Kinematics'] = KinematicsProcessor(n_agents=4, extract_per_agent=True)
         self._processor_registry['OccupancyGrid'] = OccupancyGridProcessor()
         self._processor_registry['GrayscaleObservation'] = GrayscaleProcessor()
     
@@ -308,14 +750,25 @@ class ModalityConfigManager:
         """
         # Check scenario-specific configuration first
         if scenario_name in self._scenario_configs:
-            return self._scenario_configs[scenario_name].get_modality_config(modality_name)
+            config = self._scenario_configs[scenario_name].get_modality_config(modality_name)
+            # If no processor is set but one is registered, use it
+            if config.processor is None and modality_name in self._processor_registry:
+                config.processor = self._processor_registry[modality_name]
+            return config
         
         # Check global configuration
         if modality_name in self._global_config:
-            return self._global_config[modality_name]
+            config = self._global_config[modality_name]
+            # If no processor is set but one is registered, use it
+            if config.processor is None and modality_name in self._processor_registry:
+                config.processor = self._processor_registry[modality_name]
+            return config
         
-        # Return default configuration
-        return ModalityConfig()
+        # Return default configuration with registered processor if available
+        default_config = ModalityConfig()
+        if modality_name in self._processor_registry:
+            default_config.processor = self._processor_registry[modality_name]
+        return default_config
     
     def register_processor(self, modality_name: str, processor: ObservationProcessor) -> None:
         """
