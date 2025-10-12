@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""
+Online PPO fine-tuning starting from an offline BC checkpoint.
+Minimal, self-contained PPO (actor-critic) using PyTorch.
+Designed to be runnable inside your AVs repo and venv.
+"""
+
+from __future__ import annotations
+import argparse
+import time
+from pathlib import Path
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import gymnasium as gym
+
+# Try to use optional CLIP encoder/wrapper if available
+try:
+    from rl_langvision.clip_embedder import CLIPImageEncoder
+    from rl_langvision.amb_highway_wrapper_clip import AmbulanceHighwayCLIPWrapper
+    HAS_RLLANG = True
+except Exception:
+    CLIPImageEncoder = None
+    AmbulanceHighwayCLIPWrapper = None
+    HAS_RLLANG = False
+
+
+class ActorCritic(nn.Module):
+    def __init__(self, obs_dim, n_actions, hidden=256):
+        super().__init__()
+        self.shared = nn.Sequential(
+            nn.Linear(obs_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+        )
+        self.policy = nn.Sequential(
+            nn.Linear(hidden, hidden // 2),
+            nn.ReLU(),
+            nn.Linear(hidden // 2, n_actions)
+        )
+        self.value = nn.Sequential(
+            nn.Linear(hidden, hidden // 2),
+            nn.ReLU(),
+            nn.Linear(hidden // 2, 1)
+        )
+
+    def forward(self, x):
+        h = self.shared(x)
+        logits = self.policy(h)
+        value = self.value(h).squeeze(-1)
+        return logits, value
+
+
+def preprocess_obs(obs, clip_encoder=None, device='cpu'):
+    # Convert obs into 1D torch tensor on device
+    if isinstance(obs, dict):
+        # prefer 'clip' if wrapper provides it
+        if 'clip' in obs:
+            feat = obs['clip']
+            return torch.as_tensor(feat, dtype=torch.float32).to(device)
+        # search for numpy array in dict
+        for v in obs.values():
+            if isinstance(v, np.ndarray):
+                arr = v
+                break
+        else:
+            arr = np.asarray(obs)
+    else:
+        arr = np.asarray(obs)
+
+    if clip_encoder is not None:
+        # choose last frame if stacked
+        if arr.ndim == 3:
+            if arr.shape[0] in (1, 4):
+                frame = arr[-1]
+            else:
+                frame = np.transpose(arr, (1, 2, 0))
+        elif arr.ndim == 2:
+            frame = arr
+        else:
+            frame = arr.squeeze()
+        if frame.ndim == 2:
+            frame_rgb = np.stack([frame] * 3, axis=-1)
+        else:
+            frame_rgb = frame
+        feat = clip_encoder.encode_np_rgb(frame_rgb)
+        return torch.as_tensor(feat, dtype=torch.float32).to(device)
+
+    arr = arr.astype(np.float32)
+    return torch.as_tensor(arr.ravel(), dtype=torch.float32).to(device)
+
+
+def compute_gae(rewards, values, dones, last_value, gamma, lam):
+    values = np.append(values, last_value)
+    gae = 0
+    returns = []
+    for step in reversed(range(len(rewards))):
+        delta = rewards[step] + gamma * values[step + 1] * (1.0 - dones[step]) - values[step]
+        gae = delta + gamma * lam * (1.0 - dones[step]) * gae
+        returns.insert(0, gae + values[step])
+    return np.array(returns, dtype=np.float32)
+
+
+def make_env():
+    if HAS_RLLANG and AmbulanceHighwayCLIPWrapper is not None:
+        return AmbulanceHighwayCLIPWrapper({})
+    try:
+        return gym.make('highway-v0')
+    except Exception:
+        return gym.make('highway-v0')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--checkpoint', type=str, default='checkpoints/bc_pretrain/best_model.pt')
+    parser.add_argument('--timesteps', type=int, default=200_000)
+    parser.add_argument('--n_steps', type=int, default=2048)
+    parser.add_argument('--update_epochs', type=int, default=8)
+    parser.add_argument('--minibatch_size', type=int, default=64)
+    parser.add_argument('--lr', type=float, default=2.5e-4)
+    parser.add_argument('--gamma', type=float, default=0.99)
+    parser.add_argument('--gae_lambda', type=float, default=0.95)
+    parser.add_argument('--clip', type=float, default=0.2)
+    parser.add_argument('--device', type=str, default='cuda')
+    args = parser.parse_args()
+
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+
+    env = make_env()
+    obs0, _ = env.reset()
+
+    clip_encoder = None
+    if CLIPImageEncoder is not None:
+        clip_encoder = CLIPImageEncoder(device=str(device))
+        obs_feat = preprocess_obs(obs0, clip_encoder=clip_encoder, device=device)
+        obs_dim = obs_feat.numel()
+    else:
+        obs_feat = preprocess_obs(obs0, clip_encoder=None, device=device)
+        obs_dim = obs_feat.numel()
+
+    n_actions = env.action_space.n if hasattr(env.action_space, 'n') else env.action_space.shape[0]
+
+    policy = ActorCritic(obs_dim, n_actions).to(device)
+    optimizer = optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
+
+    # load checkpoint if exists
+    ckpt = Path(args.checkpoint)
+    if ckpt.exists():
+        data = torch.load(str(ckpt), map_location=device)
+        sd = None
+        if isinstance(data, dict):
+            if 'policy_state_dict' in data:
+                sd = data['policy_state_dict']
+            elif 'state_dict' in data:
+                sd = data['state_dict']
+            else:
+                sd = data
+        else:
+            sd = data
+        try:
+            policy.load_state_dict(sd, strict=False)
+            print(f'✅ Loaded checkpoint weights from {ckpt}')
+        except Exception:
+            new = {}
+            for k, v in sd.items():
+                nk = k.replace('policy.', '').replace('network.', '')
+                new[nk] = v
+            policy.load_state_dict(new, strict=False)
+            print('✅ Loaded adapted checkpoint weights (best-effort)')
+    else:
+        print('⚠️ Checkpoint not found, training from scratch')
+
+    obs_buffer = []
+    actions_buffer = []
+    logprobs_buffer = []
+    rewards_buffer = []
+    dones_buffer = []
+    values_buffer = []
+
+    total_steps = 0
+    ep = 0
+    start_time = time.time()
+
+    while total_steps < args.timesteps:
+        obs_buffer.clear(); actions_buffer.clear(); logprobs_buffer.clear()
+        rewards_buffer.clear(); dones_buffer.clear(); values_buffer.clear()
+        obs, _ = env.reset()
+        for _ in range(args.n_steps):
+            feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
+            with torch.no_grad():
+                logits, value = policy(feat.unsqueeze(0))
+                prob = torch.softmax(logits, dim=-1)
+                dist = torch.distributions.Categorical(prob)
+                action = dist.sample().item()
+                logp = dist.log_prob(torch.as_tensor(action, device=device))
+            obs_buffer.append(feat.cpu().numpy())
+            actions_buffer.append(action)
+            logprobs_buffer.append(logp.cpu().item())
+            values_buffer.append(value.cpu().item())
+            out = env.step(action)
+            # gymnasium: obs, reward, terminated, truncated, info
+            if len(out) == 5:
+                obs, reward, terminated, truncated, info = out
+                done = terminated or truncated
+            else:
+                obs, reward, done, info = out
+            rewards_buffer.append(float(reward))
+            dones_buffer.append(bool(done))
+            if done:
+                obs, _ = env.reset()
+
+        with torch.no_grad():
+            last_feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
+            _, last_value = policy(last_feat.unsqueeze(0))
+            last_value = last_value.cpu().item()
+
+        values = np.array(values_buffer, dtype=np.float32)
+        returns = compute_gae(rewards_buffer, values, dones_buffer, last_value, args.gamma, args.gae_lambda)
+        advantages = returns - values
+
+        obs_tensor = torch.as_tensor(np.stack(obs_buffer), dtype=torch.float32).to(device)
+        actions_tensor = torch.as_tensor(actions_buffer, dtype=torch.long).to(device)
+        old_logp = torch.as_tensor(logprobs_buffer, dtype=torch.float32).to(device)
+        returns_tensor = torch.as_tensor(returns, dtype=torch.float32).to(device)
+        advantages_tensor = torch.as_tensor(advantages, dtype=torch.float32).to(device)
+        advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
+
+        batch_size = args.minibatch_size
+        idxs = np.arange(len(obs_tensor))
+        for epoch in range(args.update_epochs):
+            np.random.shuffle(idxs)
+            for start in range(0, len(idxs), batch_size):
+                mb_idx = idxs[start:start+batch_size]
+                mb_obs = obs_tensor[mb_idx]
+                mb_actions = actions_tensor[mb_idx]
+                mb_oldlogp = old_logp[mb_idx]
+                mb_returns = returns_tensor[mb_idx]
+                mb_adv = advantages_tensor[mb_idx]
+
+                logits, values = policy(mb_obs)
+                probs = torch.softmax(logits, dim=-1)
+                dist = torch.distributions.Categorical(probs)
+                logp = dist.log_prob(mb_actions)
+                ratio = torch.exp(logp - mb_oldlogp)
+                surr1 = ratio * mb_adv
+                surr2 = torch.clamp(ratio, 1.0 - args.clip, 1.0 + args.clip) * mb_adv
+                actor_loss = -torch.min(surr1, surr2).mean()
+                critic_loss = nn.functional.mse_loss(values, mb_returns)
+                entropy = dist.entropy().mean()
+                loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+                optimizer.step()
+
+        total_steps += args.n_steps
+        ep += 1
+        if ep % 5 == 0:
+            out = Path('checkpoints/ppo_online_finetuned.pt')
+            out.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({
+                'policy_state_dict': policy.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'total_steps': total_steps
+            }, str(out))
+        elapsed = time.time() - start_time
+        print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s')
+
+    out = Path('checkpoints/ppo_online_finetuned_final.pt')
+    out.parent.mkdir(parents=True, exist_ok=True)
+    torch.save({
+        'policy_state_dict': policy.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'total_steps': total_steps
+    }, str(out))
+    print('✅ Finished fine-tuning. Saved to', out)
+
+
+if __name__ == '__main__':
+    main()
