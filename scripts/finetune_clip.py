@@ -29,14 +29,36 @@ class ImageTextDataset(Dataset):
         self.df = pd.read_csv(csv_path)
         self.images_root = Path(images_root)
         self.transform = transform
+        # Resolve image files: support several layouts produced by the auto-labeler
+        resolved = []
+        for _, row in self.df.iterrows():
+            rel = Path(row['image_path'])
+            candidates = [
+                self.images_root / rel,  # original relative path under images_root
+                self.images_root / 'images' / rel.name,  # flattened copy location
+                self.images_root / rel.name,  # direct basename under images_root
+                Path(str(self.images_root) + '/' + str(rel)),  # fallback
+            ]
+            found = None
+            for c in candidates:
+                if c.exists():
+                    found = c
+                    break
+            if found is not None:
+                resolved.append((found, str(row['text'])))
+            else:
+                # skip missing images but print once
+                print(f"[finetune_clip] warning: image not found, skipping: {rel}")
+        if not resolved:
+            raise RuntimeError(f'No images could be resolved under {images_root}')
+        self.items = resolved
 
     def __len__(self):
-        return len(self.df)
+        return len(self.items)
 
     def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        img = Image.open(self.images_root / row['image_path']).convert('RGB')
-        text = str(row['text'])
+        path, text = self.items[idx]
+        img = Image.open(path).convert('RGB')
         return img, text
 
 
