@@ -186,7 +186,11 @@ def main():
             def make_fn(i):
                 return lambda: make_env()
             env_fns = [make_fn(i) for i in range(num_envs)]
-            env = gym.vector.AsyncVectorEnv(env_fns)
+            # When debugging, prefer SyncVectorEnv so exceptions show full tracebacks
+            if args.debug_vec:
+                env = gym.vector.SyncVectorEnv(env_fns)
+            else:
+                env = gym.vector.AsyncVectorEnv(env_fns)
         except Exception as e:
             print(f"⚠️  Could not create AsyncVectorEnv: {e}. Falling back to single env.")
             env = make_env()
