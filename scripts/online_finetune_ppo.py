@@ -173,7 +173,17 @@ def main():
     optimizer = optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     # micro-optimizations
     optimizer_zero_kwargs = {'set_to_none': True} if hasattr(optimizer, 'zero_grad') else {}
-    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    # Construct GradScaler using the newer torch.amp API when available to avoid deprecation warnings
+    scaler = None
+    if use_amp:
+        try:
+            # preferred API in newer torch: torch.amp.GradScaler(device_type='cuda')
+            scaler = torch.amp.GradScaler(device_type=getattr(device, 'type', 'cuda'))
+        except Exception:
+            try:
+                scaler = torch.cuda.amp.GradScaler()
+            except Exception:
+                scaler = None
 
     # load checkpoint if exists
     ckpt = Path(args.checkpoint)
