@@ -32,10 +32,32 @@ from evaluate_trained_models import BCAgent, DQNAgent, PPOAgent
 # Import ambulance scenarios
 sys.path.append(str(Path(__file__).parent.parent / 'collecting_ambulance_data'))
 try:
-    from scenarios.ambulance_scenarios import AMBULANCE_SCENARIOS
-except ImportError:
-    print("Warning: Could not import AMBULANCE_SCENARIOS, using default list")
-    AMBULANCE_SCENARIOS = {}
+    from scenarios.ambulance_scenarios import get_all_ambulance_scenarios
+    AMBULANCE_SCENARIOS = get_all_ambulance_scenarios()
+    print(f"✅ Loaded {len(AMBULANCE_SCENARIOS)} ambulance scenarios")
+except ImportError as e:
+    print(f"⚠️  Warning: Could not import ambulance scenarios: {e}")
+    print("   Using fallback scenarios (3 scenarios)")
+    AMBULANCE_SCENARIOS = {
+        "highway_free_flow": {
+            "scenario_name": "highway_free_flow",
+            "vehicles_count": 20,
+            "lanes_count": 4,
+            "duration": 40,
+        },
+        "highway_dense": {
+            "scenario_name": "highway_dense",
+            "vehicles_count": 50,
+            "lanes_count": 4,
+            "duration": 40,
+        },
+        "highway_aggressive": {
+            "scenario_name": "highway_aggressive",
+            "vehicles_count": 40,
+            "lanes_count": 3,
+            "duration": 40,
+        },
+    }
 
 
 def create_ambulance_env(scenario_name: str, scenario_config: Dict):
@@ -54,6 +76,11 @@ def create_ambulance_env(scenario_name: str, scenario_config: Dict):
     
     env = gym.make(env_id, render_mode='rgb_array')
     
+    # Extract reward speed range from scenario config if available
+    reward_speed_range = scenario_config.get('reward_speed_range', [20, 30])
+    if not isinstance(reward_speed_range, list) or len(reward_speed_range) != 2:
+        reward_speed_range = [20, 30]
+    
     # Configure to match training
     config = {
         "observation": {
@@ -71,7 +98,7 @@ def create_ambulance_env(scenario_name: str, scenario_config: Dict):
         "simulation_frequency": 15,
         "lanes_count": scenario_config.get('lanes_count', 4),
         "vehicles_count": scenario_config.get('vehicles_count', 50),
-        "reward_speed_range": [20, 30],
+        "reward_speed_range": reward_speed_range,
         "normalize_reward": True,
     }
     
