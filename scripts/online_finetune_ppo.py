@@ -252,6 +252,12 @@ def main():
     n_actions = env.action_space.n if hasattr(env.action_space, 'n') else env.action_space.shape[0]
 
     policy = ActorCritic(obs_dim, n_actions).to(device)
+    # Debug: print action space and policy head size
+    try:
+        head_out = policy.policy[-1].out_features
+    except Exception:
+        head_out = None
+    print(f'Action space n_actions={n_actions} | policy final head out_features={head_out}')
     optimizer = optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     # micro-optimizations
     optimizer_zero_kwargs = {'set_to_none': True} if hasattr(optimizer, 'zero_grad') else {}
@@ -366,6 +372,12 @@ def main():
                             pass
                         # Clip to valid range to avoid KeyError in env.step
                         actions = np.clip(actions, 0, expected_n - 1)
+                        print('    ⚠️  Actions clipped to valid range (one-time notice)')
+                # Ensure integer dtype for actions before stepping
+                try:
+                    actions = np.asarray(actions, dtype=np.int64)
+                except Exception:
+                    actions = np.asarray(actions)
                 # store per-env
                 for i in range(num_envs):
                     obs_buffer.append(feats[i].cpu().numpy())
