@@ -398,6 +398,10 @@ def main():
     total_steps = 0
     ep = 0
     start_time = time.time()
+    # instrumentation timers (seconds)
+    env_step_time = 0.0
+    transfer_time = 0.0
+    model_time = 0.0
 
     # helper to extract single-env observation from a batched observation (supports dicts)
     def _extract_obs_from_batch(obs_batch, idx: int):
@@ -422,6 +426,10 @@ def main():
         # for vectorized envs obs is batched
         # no need to reset here; env handles ongoing episodes
         epoch_start = time.time()
+        # per-epoch timers
+        epoch_env_time = 0.0
+        epoch_transfer_time = 0.0
+        epoch_model_time = 0.0
         for _ in range(args.n_steps):
             # obs may be a batch if num_envs>1
             if num_envs > 1:
@@ -431,13 +439,24 @@ def main():
                     o = _extract_obs_from_batch(obs0, i)
                     f = preprocess_obs(o, clip_encoder=clip_encoder, device=device)
                     feats.append(f)
-                feat_batch = torch.stack(feats, dim=0).to(device)
+                t0 = time.time()
+                feat_batch = torch.stack(feats, dim=0)
+                t1 = time.time()
+                # transfer to device
+                feat_batch = feat_batch.to(device)
+                t2 = time.time()
+                epoch_transfer_time += (t2 - t1)
                 with torch.no_grad():
+                    t_model0 = time.time()
                     logits, values = policy(feat_batch)
+                    t_model1 = time.time()
+                    epoch_model_time += (t_model1 - t_model0)
                     probs = torch.softmax(logits, dim=-1)
                     dist = torch.distributions.Categorical(probs)
                     actions = dist.sample().cpu().numpy()
                     logps = dist.log_prob(torch.as_tensor(actions, device=device)).cpu().numpy()
+                t_after_step = time.time()
+                # approximate env stepping time will be added after env.step below
                 # Sanity-check actions against detected action space size
                 try:
                     expected_n = n_actions
@@ -484,7 +503,11 @@ def main():
                     actions_buffer.append(int(actions[i]))
                     logprobs_buffer.append(float(logps[i]))
                     values_buffer.append(float(values[i].cpu().item()))
+                # perform environment step (CPU) and time it
+                t_env0 = time.time()
                 out = env.step(actions)
+                t_env1 = time.time()
+                epoch_env_time += (t_env1 - t_env0)
                 # env.step returns batched (obs, rewards, terminated, truncated, infos) or (obs, rewards, dones, infos)
                 if len(out) == 5:
                     obs0, reward, terminated, truncated, infos = out
@@ -496,9 +519,18 @@ def main():
                     rewards_buffer.append(float(r))
                     dones_buffer.append(bool(d))
             else:
+                t0 = time.time()
                 feat = preprocess_obs(obs0, clip_encoder=clip_encoder, device=device)
+                t1 = time.time()
+                # transfer
+                feat = feat.to(device)
+                t2 = time.time()
+                epoch_transfer_time += (t2 - t1)
                 with torch.no_grad():
+                    t_model0 = time.time()
                     logits, value = policy(feat.unsqueeze(0))
+                    t_model1 = time.time()
+                    epoch_model_time += (t_model1 - t_model0)
                     prob = torch.softmax(logits, dim=-1)
                     dist = torch.distributions.Categorical(prob)
                     action = dist.sample().item()
@@ -656,21 +688,23 @@ def main():
                 'optimizer_state_dict': optimizer.state_dict(),
                 'total_steps': total_steps
             }, str(out))
-        elapsed = time.time() - start_time
-        # compute epoch elapsed and steps/sec for this epoch
-        epoch_elapsed = time.time() - epoch_start
-        # when using vectorized envs, steps per second is per-env steps/sec times num_envs
-        steps_per_sec = (args.n_steps * num_envs) / epoch_elapsed if epoch_elapsed > 0 else float('inf')
-        # Per-epoch GPU memory usage (if CUDA enabled)
-        if torch.cuda.is_available():
-            try:
-                alloc_mb = torch.cuda.memory_allocated() // 1024 ** 2
-                resv_mb = torch.cuda.memory_reserved() // 1024 ** 2
-                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s | GPU mem alloc {alloc_mb}MB reserved {resv_mb}MB')
-            except Exception:
-                print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s | GPU mem info unavailable')
-        else:
-            print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s')
+    elapsed = time.time() - start_time
+    # compute epoch elapsed and steps/sec for this epoch
+    epoch_elapsed = time.time() - epoch_start
+    # when using vectorized envs, steps per second is per-env steps/sec times num_envs
+    steps_per_sec = (args.n_steps * num_envs) / epoch_elapsed if epoch_elapsed > 0 else float('inf')
+    # Per-epoch GPU memory usage (if CUDA enabled)
+    if torch.cuda.is_available():
+        try:
+            alloc_mb = torch.cuda.memory_allocated() // 1024 ** 2
+            resv_mb = torch.cuda.memory_reserved() // 1024 ** 2
+            print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s | GPU mem alloc {alloc_mb}MB reserved {resv_mb}MB')
+            print(f'    timing breakdown (s): env_step={epoch_env_time:.3f} transfer={epoch_transfer_time:.3f} model={epoch_model_time:.3f}')
+        except Exception:
+            print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s | GPU mem info unavailable')
+            print(f'    timing breakdown (s): env_step={epoch_env_time:.3f} transfer={epoch_transfer_time:.3f} model={epoch_model_time:.3f}')
+    else:
+        print(f'Ep {ep} | Steps {total_steps}/{args.timesteps} | Time {int(elapsed)}s | Epoch time {epoch_elapsed:.2f}s | {steps_per_sec:.1f} steps/s')
 
     out = Path('checkpoints/ppo_online_finetuned_final.pt')
     out.parent.mkdir(parents=True, exist_ok=True)
