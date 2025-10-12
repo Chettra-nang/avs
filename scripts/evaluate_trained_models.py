@@ -152,12 +152,23 @@ class BCAgent:
     def select_action(self, observation: np.ndarray) -> int:
         """Select action from observation"""
         with torch.no_grad():
-            # Preprocess image for CLIP
-            if observation.dtype == np.uint8:
-                img = Image.fromarray(observation)
+            # Handle GrayscaleObservation (stacked frames)
+            # Shape: (stack_size, height, width) - take last frame and convert to RGB
+            if len(observation.shape) == 3:
+                # Take the last frame from stack
+                gray_frame = observation[-1]  # Shape: (height, width)
+                # Convert to RGB by repeating channels
+                rgb_frame = np.stack([gray_frame] * 3, axis=-1)  # Shape: (height, width, 3)
             else:
-                img = Image.fromarray((observation * 255).astype(np.uint8))
+                rgb_frame = observation
             
+            # Convert to PIL Image
+            if rgb_frame.dtype != np.uint8:
+                rgb_frame = (rgb_frame * 255).astype(np.uint8)
+            
+            img = Image.fromarray(rgb_frame)
+            
+            # Preprocess for CLIP
             img_tensor = self.clip_preprocess(img).unsqueeze(0).to(self.device)
             
             # Encode with CLIP
@@ -197,15 +208,26 @@ class DQNAgent:
     def select_action(self, observation: np.ndarray, epsilon: float = 0.0) -> int:
         """Select action using epsilon-greedy"""
         if np.random.random() < epsilon:
-            return np.random.randint(0, 4)
+            return np.random.randint(0, 5)
         
         with torch.no_grad():
-            # Preprocess image for CLIP
-            if observation.dtype == np.uint8:
-                img = Image.fromarray(observation)
+            # Handle GrayscaleObservation (stacked frames)
+            # Shape: (stack_size, height, width) - take last frame and convert to RGB
+            if len(observation.shape) == 3:
+                # Take the last frame from stack
+                gray_frame = observation[-1]  # Shape: (height, width)
+                # Convert to RGB by repeating channels
+                rgb_frame = np.stack([gray_frame] * 3, axis=-1)  # Shape: (height, width, 3)
             else:
-                img = Image.fromarray((observation * 255).astype(np.uint8))
+                rgb_frame = observation
             
+            # Convert to PIL Image
+            if rgb_frame.dtype != np.uint8:
+                rgb_frame = (rgb_frame * 255).astype(np.uint8)
+            
+            img = Image.fromarray(rgb_frame)
+            
+            # Preprocess for CLIP
             img_tensor = self.clip_preprocess(img).unsqueeze(0).to(self.device)
             
             # Encode with CLIP
@@ -245,12 +267,23 @@ class PPOAgent:
     def select_action(self, observation: np.ndarray, deterministic: bool = True) -> int:
         """Select action from policy"""
         with torch.no_grad():
-            # Preprocess image for CLIP
-            if observation.dtype == np.uint8:
-                img = Image.fromarray(observation)
+            # Handle GrayscaleObservation (stacked frames)
+            # Shape: (stack_size, height, width) - take last frame and convert to RGB
+            if len(observation.shape) == 3:
+                # Take the last frame from stack
+                gray_frame = observation[-1]  # Shape: (height, width)
+                # Convert to RGB by repeating channels
+                rgb_frame = np.stack([gray_frame] * 3, axis=-1)  # Shape: (height, width, 3)
             else:
-                img = Image.fromarray((observation * 255).astype(np.uint8))
+                rgb_frame = observation
             
+            # Convert to PIL Image
+            if rgb_frame.dtype != np.uint8:
+                rgb_frame = (rgb_frame * 255).astype(np.uint8)
+            
+            img = Image.fromarray(rgb_frame)
+            
+            # Preprocess for CLIP
             img_tensor = self.clip_preprocess(img).unsqueeze(0).to(self.device)
             
             # Encode with CLIP
