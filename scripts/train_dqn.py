@@ -22,7 +22,6 @@ parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--verbose', type=int, default=1)
 args = parser.parse_args()
 
-# Try to import SB3
 try:
     from stable_baselines3 import DQN
     from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -31,48 +30,67 @@ except Exception as e:
     print('Error:', e)
     sys.exit(1)
 
-# ensure highway_env is importable
+# ensure highway_env is importable and use gymnasium
 try:
-    import highway_env
+    import highway_env  # registers highway envs
 except Exception:
     print('Could not import highway_env. Ensure it is installed in your venv: pip install highway-env')
-    # we won't exit; allow gym to raise detailed error later
+    # continue; env.make will raise a clearer error
 
-# env factory
+try:
+    import gymnasium as gym
+except Exception:
+    # fall back to gym for older compatibility
+    import gym
+
 
 def make_env(env_id: str, render_mode=None):
-    import gym
     if render_mode is not None:
         return gym.make(env_id, render_mode=render_mode)
     return gym.make(env_id)
 
-# create vectorized env (use subprocesses if available)
-num_envs = 8
-try:
-    env_fns = [lambda eid=args.env_id: make_env(eid) for _ in range(num_envs)]
-    env = SubprocVecEnv(env_fns)
-except Exception:
-    env = DummyVecEnv([lambda: make_env(args.env_id)])
 
-print('Training DQN on env:', args.env_id)
-model = DQN(
-    args.policy,
-    env,
-    learning_rate=args.learning_rate,
-    buffer_size=args.buffer_size,
-    batch_size=args.batch_size,
-    train_freq=args.train_freq,
-    gradient_steps=args.gradient_steps,
-    device=args.device,
-    seed=args.seed,
-    verbose=args.verbose,
-)
+def main():
+    # create vectorized env (use subprocesses if available)
+    num_envs = 8
+    # prefer SubprocVecEnv but guard against multiprocessing import issues by
+    # creating envs inside __main__ guarded function
+    env = None
+    try:
+        env_fns = []
+        for _ in range(num_envs):
+            # avoid late-binding lambda by creating a closure
+            def make_fn(eid=args.env_id):
+                return lambda: make_env(eid)
+            env_fns.append(make_fn())
+        env = SubprocVecEnv(env_fns)
+    except Exception:
+        # fallback to single-process DummyVecEnv
+        env = DummyVecEnv([lambda: make_env(args.env_id)])
 
-out = Path('checkpoints')
-out.mkdir(parents=True, exist_ok=True)
-model_path = out / f'dqn_{args.env_id}.zip'
+    print('Training DQN on env:', args.env_id)
+    model = DQN(
+        args.policy,
+        env,
+        learning_rate=args.learning_rate,
+        buffer_size=args.buffer_size,
+        batch_size=args.batch_size,
+        train_freq=args.train_freq,
+        gradient_steps=args.gradient_steps,
+        device=args.device,
+        seed=args.seed,
+        verbose=args.verbose,
+    )
 
-print('Starting training, saving to', model_path)
-model.learn(total_timesteps=args.timesteps)
-model.save(str(model_path))
-print('Saved model to', model_path)
+    out = Path('checkpoints')
+    out.mkdir(parents=True, exist_ok=True)
+    model_path = out / f'dqn_{args.env_id}.zip'
+
+    print('Starting training, saving to', model_path)
+    model.learn(total_timesteps=args.timesteps)
+    model.save(str(model_path))
+    print('Saved model to', model_path)
+
+
+if __name__ == '__main__':
+    main()
