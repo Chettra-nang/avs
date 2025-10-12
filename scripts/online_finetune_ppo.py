@@ -152,6 +152,7 @@ def main():
     parser.add_argument('--video-dir', type=str, default='videos', help='Directory to save evaluation videos')
     parser.add_argument('--eval-episodes', type=int, default=2, help='Number of evaluation episodes to render/save')
     parser.add_argument('--use-amp', action='store_true', help='Use mixed precision (AMP) when running on CUDA')
+    parser.add_argument('--num-envs', type=int, default=1, help='Number of parallel envs (vectorized). Uses AsyncVectorEnv when >1')
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
@@ -176,16 +177,41 @@ def main():
 
     use_amp = bool(args.use_amp and device.type == 'cuda')
 
-    env = make_env()
+    # Create vectorized envs if requested
+    if args.num_envs and args.num_envs > 1:
+        num_envs = args.num_envs
+        try:
+            # build async vector env from make_env factory
+            def make_fn(i):
+                return lambda: make_env()
+            env_fns = [make_fn(i) for i in range(num_envs)]
+            env = gym.vector.AsyncVectorEnv(env_fns)
+        except Exception as e:
+            print(f"⚠️  Could not create AsyncVectorEnv: {e}. Falling back to single env.")
+            env = make_env()
+            num_envs = 1
+    else:
+        env = make_env()
+        num_envs = 1
+
     obs0, _ = env.reset()
 
     clip_encoder = None
     if CLIPImageEncoder is not None:
         clip_encoder = CLIPImageEncoder(device=str(device))
-        obs_feat = preprocess_obs(obs0, clip_encoder=clip_encoder, device=device)
+        # If obs0 is batched (vectorized env), pick first element to infer dim
+        if isinstance(obs0, (list, tuple)) or (hasattr(obs0, 'shape') and getattr(obs0, 'shape', None) and getattr(obs0, 'shape')[0] == num_envs):
+            sample_obs = obs0[0]
+        else:
+            sample_obs = obs0
+        obs_feat = preprocess_obs(sample_obs, clip_encoder=clip_encoder, device=device)
         obs_dim = obs_feat.numel()
     else:
-        obs_feat = preprocess_obs(obs0, clip_encoder=None, device=device)
+        if isinstance(obs0, (list, tuple)) or (hasattr(obs0, 'shape') and getattr(obs0, 'shape', None) and getattr(obs0, 'shape')[0] == num_envs):
+            sample_obs = obs0[0]
+        else:
+            sample_obs = obs0
+        obs_feat = preprocess_obs(sample_obs, clip_encoder=None, device=device)
         obs_dim = obs_feat.numel()
 
     n_actions = env.action_space.n if hasattr(env.action_space, 'n') else env.action_space.shape[0]
@@ -253,31 +279,65 @@ def main():
     while total_steps < args.timesteps:
         obs_buffer.clear(); actions_buffer.clear(); logprobs_buffer.clear()
         rewards_buffer.clear(); dones_buffer.clear(); values_buffer.clear()
-        obs, _ = env.reset()
+        # for vectorized envs obs is batched
+        # no need to reset here; env handles ongoing episodes
         epoch_start = time.time()
         for _ in range(args.n_steps):
-            feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
-            with torch.no_grad():
-                logits, value = policy(feat.unsqueeze(0))
-                prob = torch.softmax(logits, dim=-1)
-                dist = torch.distributions.Categorical(prob)
-                action = dist.sample().item()
-                logp = dist.log_prob(torch.as_tensor(action, device=device))
-            obs_buffer.append(feat.cpu().numpy())
-            actions_buffer.append(action)
-            logprobs_buffer.append(logp.cpu().item())
-            values_buffer.append(value.cpu().item())
-            out = env.step(action)
-            # gymnasium: obs, reward, terminated, truncated, info
-            if len(out) == 5:
-                obs, reward, terminated, truncated, info = out
-                done = terminated or truncated
+            # obs may be a batch if num_envs>1
+            if num_envs > 1:
+                # preprocess each env's obs into feature vector
+                feats = []
+                for i in range(num_envs):
+                    o = obs0[i] if isinstance(obs0, (list, tuple)) else obs0[i]
+                    f = preprocess_obs(o, clip_encoder=clip_encoder, device=device)
+                    feats.append(f)
+                feat_batch = torch.stack(feats, dim=0).to(device)
+                with torch.no_grad():
+                    logits, values = policy(feat_batch)
+                    probs = torch.softmax(logits, dim=-1)
+                    dist = torch.distributions.Categorical(probs)
+                    actions = dist.sample().cpu().numpy()
+                    logps = dist.log_prob(torch.as_tensor(actions, device=device)).cpu().numpy()
+                # store per-env
+                for i in range(num_envs):
+                    obs_buffer.append(feats[i].cpu().numpy())
+                    actions_buffer.append(int(actions[i]))
+                    logprobs_buffer.append(float(logps[i]))
+                    values_buffer.append(float(values[i].cpu().item()))
+                out = env.step(actions)
+                # env.step returns batched (obs, rewards, terminated, truncated, infos) or (obs, rewards, dones, infos)
+                if len(out) == 5:
+                    obs0, reward, terminated, truncated, infos = out
+                    done = np.logical_or(terminated, truncated)
+                else:
+                    obs0, reward, done, infos = out
+                # append rewards and dones per env
+                for r, d in zip(reward, done):
+                    rewards_buffer.append(float(r))
+                    dones_buffer.append(bool(d))
             else:
-                obs, reward, done, info = out
-            rewards_buffer.append(float(reward))
-            dones_buffer.append(bool(done))
-            if done:
-                obs, _ = env.reset()
+                feat = preprocess_obs(obs0, clip_encoder=clip_encoder, device=device)
+                with torch.no_grad():
+                    logits, value = policy(feat.unsqueeze(0))
+                    prob = torch.softmax(logits, dim=-1)
+                    dist = torch.distributions.Categorical(prob)
+                    action = dist.sample().item()
+                    logp = dist.log_prob(torch.as_tensor(action, device=device))
+                obs_buffer.append(feat.cpu().numpy())
+                actions_buffer.append(action)
+                logprobs_buffer.append(logp.cpu().item())
+                values_buffer.append(value.cpu().item())
+                out = env.step(action)
+                # gymnasium: obs, reward, terminated, truncated, info
+                if len(out) == 5:
+                    obs0, reward, terminated, truncated, info = out
+                    done = terminated or truncated
+                else:
+                    obs0, reward, done, info = out
+                rewards_buffer.append(float(reward))
+                dones_buffer.append(bool(done))
+                if done:
+                    obs0, _ = env.reset()
 
         with torch.no_grad():
             last_feat = preprocess_obs(obs, clip_encoder=clip_encoder, device=device)
@@ -365,7 +425,8 @@ def main():
                     nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                     optimizer.step()
 
-        total_steps += args.n_steps
+        # total steps increased by n_steps * num_envs
+        total_steps += args.n_steps * num_envs
         ep += 1
         if ep % 5 == 0:
             out = Path('checkpoints/ppo_online_finetuned.pt')
@@ -378,7 +439,8 @@ def main():
         elapsed = time.time() - start_time
         # compute epoch elapsed and steps/sec for this epoch
         epoch_elapsed = time.time() - epoch_start
-        steps_per_sec = args.n_steps / epoch_elapsed if epoch_elapsed > 0 else float('inf')
+        # when using vectorized envs, steps per second is per-env steps/sec times num_envs
+        steps_per_sec = (args.n_steps * num_envs) / epoch_elapsed if epoch_elapsed > 0 else float('inf')
         # Per-epoch GPU memory usage (if CUDA enabled)
         if torch.cuda.is_available():
             try:
