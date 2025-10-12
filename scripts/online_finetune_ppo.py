@@ -154,6 +154,7 @@ def main():
     parser.add_argument('--use-amp', action='store_true', help='Use mixed precision (AMP) when running on CUDA')
     parser.add_argument('--num-envs', type=int, default=1, help='Number of parallel envs (vectorized). Uses AsyncVectorEnv when >1')
     parser.add_argument('--debug-vec', action='store_true', help='Print a one-time debug dump of vectorized obs structure')
+    parser.add_argument('--dump-action-map', action='store_true', help='Create one env, print its action_space and highway-env action mapping then exit')
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
@@ -198,6 +199,36 @@ def main():
     else:
         env = make_env()
         num_envs = 1
+
+    # Diagnostic: dump action map and exit (helps debug KeyError in highway-env mappings)
+    if args.dump_action_map:
+        try:
+            tmp = make_env()
+            print('Action space:', tmp.action_space)
+            # try to access highway-env specific mapping
+            mapping = None
+            try:
+                # many highway-envs expose action_type.actions or actions mapping on the action_type
+                action_type = getattr(tmp.unwrapped, 'action_type', None)
+                if action_type is not None and hasattr(action_type, 'actions'):
+                    mapping = action_type.actions
+            except Exception:
+                mapping = None
+            if mapping is None:
+                # fallback: try attributes on tmp
+                try:
+                    mapping = getattr(tmp, 'actions', None)
+                except Exception:
+                    mapping = None
+            print('Detected action mapping (repr):', repr(mapping))
+            try:
+                tmp.close()
+            except Exception:
+                pass
+        except Exception as e:
+            print('⚠️  Could not create env to dump action map:', e)
+        import sys
+        sys.exit(0)
 
     obs0, _ = env.reset()
 
