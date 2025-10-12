@@ -466,6 +466,19 @@ def main():
                     actions = [int(x) for x in actions]
                 except Exception:
                     pass
+                # Remap per-env sampled indices to the env's allowed action keys (if detected)
+                if per_env_allowed_keys is not None:
+                    remapped = []
+                    for i, a in enumerate(actions):
+                        allowed = per_env_allowed_keys[i]
+                        if len(allowed) == 0:
+                            remapped.append(int(a))
+                            continue
+                        # map a (which is in policy index space 0..policy_out-1) to allowed key
+                        # safe strategy: clamp into allowed index range
+                        idx = int(a) % len(allowed)
+                        remapped.append(int(allowed[idx]))
+                    actions = remapped
                 # store per-env
                 for i in range(num_envs):
                     obs_buffer.append(feats[i].cpu().numpy())
