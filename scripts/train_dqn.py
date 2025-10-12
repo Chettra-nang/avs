@@ -73,7 +73,36 @@ def main():
         # fallback to single-process DummyVecEnv
         env = DummyVecEnv([lambda: make_env(args.env_id)])
 
-    print('Training DQN on env:', args.env_id)
+    # Print system / device diagnostics to help debug GPU usage
+    try:
+        import torch
+        cuda_available = torch.cuda.is_available()
+        cuda_count = torch.cuda.device_count() if cuda_available else 0
+        cuda_version = torch.version.cuda if hasattr(torch, 'version') else 'unknown'
+        try:
+            device_name = torch.cuda.get_device_name(0) if cuda_available and cuda_count > 0 else 'n/a'
+        except Exception:
+            device_name = 'n/a'
+        print(f'Training DQN on env: {args.env_id}')
+        print('PyTorch version:', getattr(torch, '__version__', 'unknown'))
+        print('CUDA available:', cuda_available, 'count:', cuda_count, 'cuda_version:', cuda_version)
+        print('CUDA device name:', device_name)
+    except Exception:
+        # If torch isn't importable, still print the env notice
+        print('Training DQN on env:', args.env_id)
+
+    # ensure selected device is actually available; stable-baselines3 will accept a str but
+    # we guard to provide a clear message when falling back to CPU.
+    selected_device = args.device
+    try:
+        if selected_device == 'cuda':
+            import torch
+            if not torch.cuda.is_available():
+                print('WARNING: args.device=\'cuda\' but CUDA is not available in this Python environment. Falling back to cpu.')
+                selected_device = 'cpu'
+    except Exception:
+        # ignore issues importing torch here
+        pass
     model = DQN(
         args.policy,
         env,
@@ -82,7 +111,7 @@ def main():
         batch_size=args.batch_size,
         train_freq=args.train_freq,
         gradient_steps=args.gradient_steps,
-        device=args.device,
+        device=selected_device,
         seed=args.seed,
         verbose=args.verbose,
     )

@@ -39,7 +39,7 @@ Expected output:
 python collecting_ambulance_data/examples/parallel_ambulance_collection.py \
     --episodes 1000 \
     --max-steps 100 \
-    --output-dir data/ambulance_dataset_30k_cpu \
+    --output-dir data/ambulance_dataset_diagnose \
     --max-workers 20 \
     --batch-optimize \
     --seed 42
