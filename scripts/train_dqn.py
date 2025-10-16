@@ -22,6 +22,10 @@ parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--verbose', type=int, default=1)
 parser.add_argument('--num-envs', type=int, default=8, help='Number of parallel envs for SubprocVecEnv')
 parser.add_argument('--no-subproc', action='store_true', help='Force single-process DummyVecEnv (avoid subprocesses)')
+parser.add_argument('--use-clip', action='store_true', help='Enable CLIP-shaped reward via ClipRewardWrapper')
+parser.add_argument('--clip-embeds', type=str, default=None, help='Path to action_embeds.npz or .npy file')
+parser.add_argument('--w-clip', type=float, default=1.2, help='Weight for CLIP reward')
+parser.add_argument('--clip-model-name', type=str, default='roberta-ViT-B-32', help='open_clip model name to load in each worker')
 args = parser.parse_args()
 
 try:
@@ -47,9 +51,23 @@ except Exception:
 
 
 def make_env(env_id: str, render_mode=None):
+    # create base env
     if render_mode is not None:
-        return gym.make(env_id, render_mode=render_mode)
-    return gym.make(env_id)
+        base = gym.make(env_id, render_mode=render_mode)
+    else:
+        base = gym.make(env_id)
+    # optionally wrap with CLIP reward wrapper (only for non-vectorized envs)
+    if getattr(args, 'use_clip', False):
+        try:
+            from ..highway_datacollection.wrappers.clip_reward_wrapper import ClipRewardWrapper
+            # provide clip embeddings path and model name
+            clip_embeds = args.clip_embeds
+            w_clip = args.w_clip
+            model_name = args.clip_model_name
+            base = ClipRewardWrapper(base, text_embeds=clip_embeds, model_name=model_name, w_clip=w_clip, device='cuda' if args.device=='cuda' else 'cpu')
+        except Exception as e:
+            print('Failed to enable ClipRewardWrapper:', e)
+    return base
 
 
 def main():
