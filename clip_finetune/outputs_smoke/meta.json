@@ -1,0 +1,8 @@
+{
+  "model": "roberta-ViT-B-32",
+  "prompts": {
+    "0": "Drive slower approaching cross traffic",
+    "1": "Maintain speed / hold position",
+    "2": "Drive faster / accelerate to clear intersection"
+  }
+}
